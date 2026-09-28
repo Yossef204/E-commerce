@@ -44,4 +44,3 @@ export interface IVendorPayout {
   createdAt?: Date;
   updatedAt?: Date;
 }
-

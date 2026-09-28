@@ -36,4 +36,3 @@ export interface IEntityOrder {
   status: EntityOrderStatusEnum;
   statusHistory: IStatusHistoryEntry[];
 }
-

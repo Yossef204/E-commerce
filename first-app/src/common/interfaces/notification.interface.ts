@@ -14,4 +14,3 @@ export interface INotification {
   createdAt?: Date;
   updatedAt?: Date;
 }
-

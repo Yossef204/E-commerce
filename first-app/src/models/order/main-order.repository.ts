@@ -10,4 +10,3 @@ export class MainOrderRepo extends AbstractRepo<TMainOrder> {
     super(mainOrderModel);
   }
 }
-

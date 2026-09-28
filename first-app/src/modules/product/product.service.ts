@@ -29,15 +29,21 @@ export class ProductService {
     if (!Types.ObjectId.isValid(createProductDto.sellingEntityId)) {
       throw new BadRequestException('Invalid selling entity ID format');
     }
-    const sellingEntityId = new Types.ObjectId(createProductDto.sellingEntityId);
+    const sellingEntityId = new Types.ObjectId(
+      createProductDto.sellingEntityId,
+    );
 
-    const sellingEntity = await this.sellingEntityRepo.getOne({ _id: sellingEntityId });
+    const sellingEntity = await this.sellingEntityRepo.getOne({
+      _id: sellingEntityId,
+    });
     if (!sellingEntity) {
       throw new NotFoundException('Selling entity not found');
     }
 
     if (sellingEntity.status !== EntityStatusEnum.APPROVED) {
-      throw new ForbiddenException('Selling entity must be APPROVED to register products');
+      throw new ForbiddenException(
+        'Selling entity must be APPROVED to register products',
+      );
     }
 
     if (sellingEntity.primaryOwnerId.toString() !== ownerIdStr) {
@@ -46,13 +52,16 @@ export class ProductService {
 
     // Check SKU uniqueness
     for (const vDto of createProductDto.variants) {
-      const existingSku = await this.inventoryRepo.getOne({ sku: vDto.sku.trim() });
+      const existingSku = await this.inventoryRepo.getOne({
+        sku: vDto.sku.trim(),
+      });
       if (existingSku) {
         throw new ConflictException(`SKU "${vDto.sku}" is already in use`);
       }
     }
 
-    const productEntity = this.productFactory.createProductEntity(createProductDto);
+    const productEntity =
+      this.productFactory.createProductEntity(createProductDto);
     const createdProduct = await this.productRepo.create(productEntity);
 
     // Initialize inventory records for each variant
@@ -94,7 +103,8 @@ export class ProductService {
       {
         approvalStatus: updateApprovalDto.approvalStatus,
         rejectionReason:
-          updateApprovalDto.approvalStatus === ProductApprovalStatusEnum.REJECTED
+          updateApprovalDto.approvalStatus ===
+          ProductApprovalStatusEnum.REJECTED
             ? updateApprovalDto.rejectionReason || 'No reason provided'
             : null,
       },
@@ -135,7 +145,10 @@ export class ProductService {
     };
   }
 
-  async updateInventoryStock(ownerIdStr: string, updateInventoryDto: UpdateInventoryDto) {
+  async updateInventoryStock(
+    ownerIdStr: string,
+    updateInventoryDto: UpdateInventoryDto,
+  ) {
     const { sku, quantity, operation } = updateInventoryDto;
 
     const inventory = await this.inventoryRepo.getOne({ sku: sku.trim() });
@@ -148,9 +161,16 @@ export class ProductService {
       throw new NotFoundException('Associated product not found');
     }
 
-    const sellingEntity = await this.sellingEntityRepo.getOne({ _id: product.sellingEntityId });
-    if (!sellingEntity || sellingEntity.primaryOwnerId.toString() !== ownerIdStr) {
-      throw new ForbiddenException('Access denied: You do not own this product inventory');
+    const sellingEntity = await this.sellingEntityRepo.getOne({
+      _id: product.sellingEntityId,
+    });
+    if (
+      !sellingEntity ||
+      sellingEntity.primaryOwnerId.toString() !== ownerIdStr
+    ) {
+      throw new ForbiddenException(
+        'Access denied: You do not own this product inventory',
+      );
     }
 
     let newAvailableStock = inventory.availableStock;
@@ -174,7 +194,9 @@ export class ProductService {
   async reserveStockAtomic(sku: string, quantity: number) {
     const success = await this.inventoryRepo.reserveStockAtomic(sku, quantity);
     if (!success) {
-      throw new BadRequestException(`Insufficient available stock for SKU "${sku}"`);
+      throw new BadRequestException(
+        `Insufficient available stock for SKU "${sku}"`,
+      );
     }
     return {
       success: true,

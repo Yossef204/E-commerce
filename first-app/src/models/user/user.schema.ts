@@ -15,7 +15,13 @@ export class User {
   @Prop({ type: String })
   phoneNumber: string;
 
-  @Prop({ type: String, required: true, unique: true, lowercase: true, trim: true })
+  @Prop({
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true,
+  })
   email: string;
 
   @Prop({ type: String, required: true })

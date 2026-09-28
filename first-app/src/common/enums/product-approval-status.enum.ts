@@ -4,4 +4,3 @@ export enum ProductApprovalStatusEnum {
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
 }
-

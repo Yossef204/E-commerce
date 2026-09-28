@@ -10,4 +10,3 @@ export class UpdateEntityOrderStatusDto {
   @IsString()
   note?: string;
 }
-

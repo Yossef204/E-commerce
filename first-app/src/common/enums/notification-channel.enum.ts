@@ -3,4 +3,3 @@ export enum NotificationChannelEnum {
   PUSH = 'PUSH',
   IN_APP = 'IN_APP',
 }
-

@@ -20,4 +20,3 @@ import {
   exports: [SellingEntityRepo],
 })
 export class SellingEntityMongoModule {}
-

@@ -4,4 +4,3 @@ export enum EscrowStatusEnum {
   REFUNDED = 'REFUNDED',
   DISPUTED = 'DISPUTED',
 }
-

@@ -33,7 +33,10 @@ export class SellingEntityService {
     private readonly sellingEntityFactory: SellingEntityFactory,
   ) {}
 
-  async registerCompany(ownerIdStr: string, createCompanyDto: CreateCompanyDto) {
+  async registerCompany(
+    ownerIdStr: string,
+    createCompanyDto: CreateCompanyDto,
+  ) {
     if (!Types.ObjectId.isValid(ownerIdStr)) {
       throw new BadRequestException('Invalid owner ID format');
     }
@@ -44,15 +47,25 @@ export class SellingEntityService {
       throw new NotFoundException('Owner user not found');
     }
 
-    const existingEntity = await this.sellingEntityRepo.getOne({ primaryOwnerId: ownerId });
+    const existingEntity = await this.sellingEntityRepo.getOne({
+      primaryOwnerId: ownerId,
+    });
     if (existingEntity) {
-      throw new ConflictException('User already owns a registered selling entity');
+      throw new ConflictException(
+        'User already owns a registered selling entity',
+      );
     }
 
-    const entityData = this.sellingEntityFactory.createCompanyEntity(ownerId, createCompanyDto);
+    const entityData = this.sellingEntityFactory.createCompanyEntity(
+      ownerId,
+      createCompanyDto,
+    );
     const createdEntity = await this.sellingEntityRepo.create(entityData);
 
-    await this.userRepo.updateOne({ _id: ownerId }, { role: RolesEnum.COMPANY_ADMIN });
+    await this.userRepo.updateOne(
+      { _id: ownerId },
+      { role: RolesEnum.COMPANY_ADMIN },
+    );
 
     return {
       message: 'Company registered successfully. Pending super admin approval.',
@@ -74,9 +87,13 @@ export class SellingEntityService {
       throw new NotFoundException('Owner user not found');
     }
 
-    const existingEntity = await this.sellingEntityRepo.getOne({ primaryOwnerId: ownerId });
+    const existingEntity = await this.sellingEntityRepo.getOne({
+      primaryOwnerId: ownerId,
+    });
     if (existingEntity) {
-      throw new ConflictException('User already owns a registered selling entity');
+      throw new ConflictException(
+        'User already owns a registered selling entity',
+      );
     }
 
     const entityData = this.sellingEntityFactory.createIndependentSellerEntity(
@@ -93,7 +110,10 @@ export class SellingEntityService {
     };
   }
 
-  async updateStatus(entityIdStr: string, updateStatusDto: UpdateEntityStatusDto) {
+  async updateStatus(
+    entityIdStr: string,
+    updateStatusDto: UpdateEntityStatusDto,
+  ) {
     if (!Types.ObjectId.isValid(entityIdStr)) {
       throw new BadRequestException('Invalid entity ID format');
     }
@@ -127,9 +147,13 @@ export class SellingEntityService {
     }
     const ownerId = new Types.ObjectId(ownerIdStr);
 
-    const entity = await this.sellingEntityRepo.getOne({ primaryOwnerId: ownerId });
+    const entity = await this.sellingEntityRepo.getOne({
+      primaryOwnerId: ownerId,
+    });
     if (!entity) {
-      throw new NotFoundException('No selling entity profile found for this user');
+      throw new NotFoundException(
+        'No selling entity profile found for this user',
+      );
     }
 
     return {
@@ -152,7 +176,9 @@ export class SellingEntityService {
     }
     const sellingEntityId = new Types.ObjectId(sellingEntityIdStr);
 
-    const entity = await this.sellingEntityRepo.getOne({ _id: sellingEntityId });
+    const entity = await this.sellingEntityRepo.getOne({
+      _id: sellingEntityId,
+    });
     if (!entity) {
       throw new NotFoundException('Selling entity not found');
     }
@@ -162,14 +188,20 @@ export class SellingEntityService {
       (p) => p.approvalStatus === ProductApprovalStatusEnum.APPROVED,
     ).length;
 
-    const allEntityOrders = await this.entityOrderRepo.getAll({ sellingEntityId });
+    const allEntityOrders = await this.entityOrderRepo.getAll({
+      sellingEntityId,
+    });
     const sortedOrders = [...allEntityOrders].sort(
       (a: any, b: any) =>
-        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+        new Date(b.createdAt || 0).getTime() -
+        new Date(a.createdAt || 0).getTime(),
     );
     const recentOrders = sortedOrders.slice(0, 5);
 
-    const totalSales = allEntityOrders.reduce((sum, o) => sum + (o.subtotal || 0), 0);
+    const totalSales = allEntityOrders.reduce(
+      (sum, o) => sum + (o.subtotal || 0),
+      0,
+    );
     const pendingOrdersCount = allEntityOrders.filter(
       (o) =>
         o.status === EntityOrderStatusEnum.PENDING ||
@@ -198,11 +230,11 @@ export class SellingEntityService {
           pendingOrdersCount,
           activeProductsCount,
           escrowBalance: Math.round(escrowBalance * 100) / 100,
-          availablePayoutBalance: Math.round(availablePayoutBalance * 100) / 100,
+          availablePayoutBalance:
+            Math.round(availablePayoutBalance * 100) / 100,
         },
         recentOrders,
       },
     };
   }
 }
-

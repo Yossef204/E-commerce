@@ -1,4 +1,10 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsObject, IsString } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsObject,
+  IsString,
+} from 'class-validator';
 import { AuditActionEnum } from '../../../common/enums/audit-action.enum';
 
 export class CreateAuditLogDto {
@@ -30,4 +36,3 @@ export class CreateAuditLogDto {
   @IsString()
   ipAddress?: string;
 }
-

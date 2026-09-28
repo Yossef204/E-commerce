@@ -1,4 +1,12 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 export class CreateVariantDto {
   @IsString()
@@ -21,4 +29,3 @@ export class CreateVariantDto {
   @IsBoolean()
   isActive?: boolean;
 }
-

@@ -6,8 +6,9 @@ import { EntityOrder, TEntityOrder } from './entity-order.schema';
 
 @Injectable()
 export class EntityOrderRepo extends AbstractRepo<TEntityOrder> {
-  constructor(@InjectModel(EntityOrder.name) entityOrderModel: Model<TEntityOrder>) {
+  constructor(
+    @InjectModel(EntityOrder.name) entityOrderModel: Model<TEntityOrder>,
+  ) {
     super(entityOrderModel);
   }
 }
-

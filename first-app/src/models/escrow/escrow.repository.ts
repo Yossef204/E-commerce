@@ -10,4 +10,3 @@ export class EscrowRepo extends AbstractRepo<TEscrow> {
     super(escrowModel);
   }
 }
-

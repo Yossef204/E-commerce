@@ -12,4 +12,3 @@ export class NotificationRepo extends AbstractRepo<TNotification> {
     super(notificationModel);
   }
 }
-

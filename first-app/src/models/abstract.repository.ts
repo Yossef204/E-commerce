@@ -25,7 +25,9 @@ export abstract class AbstractRepo<T> {
     options?: QueryOptions,
   ): Promise<T | null> {
     return this._model.findOne(filter, projection, options).exec();
-    return this._model.findOne(filter, projection, { lean: true, ...options }).exec() as Promise<T | null>;
+    return this._model
+      .findOne(filter, projection, { lean: true, ...options })
+      .exec() as Promise<T | null>;
   }
 
   public async getAll(
@@ -34,7 +36,9 @@ export abstract class AbstractRepo<T> {
     options?: QueryOptions,
   ): Promise<T[]> {
     return this._model.find(filter, projection, options).exec();
-    return this._model.find(filter, projection, { lean: true, ...options }).exec() as Promise<T[]>;
+    return this._model
+      .find(filter, projection, { lean: true, ...options })
+      .exec() as Promise<T[]>;
   }
 
   public async updateOne(

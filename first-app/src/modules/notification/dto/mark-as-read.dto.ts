@@ -5,4 +5,3 @@ export class MarkAsReadDto {
   @IsString()
   notificationId: string;
 }
-

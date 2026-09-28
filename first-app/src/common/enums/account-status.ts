@@ -3,4 +3,3 @@ export enum AccountStatusEnum {
   SUSPENDED = 'SUSPENDED',
   BLOCKED = 'BLOCKED',
 }
-

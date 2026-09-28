@@ -69,4 +69,3 @@ export class SellingEntityController {
     return this.sellingEntityService.findAll();
   }
 }
-

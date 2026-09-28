@@ -17,4 +17,3 @@ export class NotificationController {
     return this.notificationService.markAsRead(id, userId);
   }
 }
-

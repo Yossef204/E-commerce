@@ -10,4 +10,3 @@ export class UpdateProductApprovalDto {
   @IsString()
   rejectionReason?: string;
 }
-

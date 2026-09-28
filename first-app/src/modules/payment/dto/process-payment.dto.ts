@@ -18,4 +18,3 @@ export class ProcessPaymentDto {
   @IsString()
   gatewayToken?: string;
 }
-

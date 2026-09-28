@@ -20,7 +20,8 @@ export class BusinessDetails {
   address?: string;
 }
 
-export const BusinessDetailsSchema = SchemaFactory.createForClass(BusinessDetails);
+export const BusinessDetailsSchema =
+  SchemaFactory.createForClass(BusinessDetails);
 
 @Schema({ timestamps: true })
 export class SellingEntity {
@@ -63,4 +64,3 @@ export const SellingEntitySchema = SchemaFactory.createForClass(SellingEntity);
 // Compound indexes
 SellingEntitySchema.index({ type: 1, status: 1 });
 SellingEntitySchema.index({ primaryOwnerId: 1 });
-

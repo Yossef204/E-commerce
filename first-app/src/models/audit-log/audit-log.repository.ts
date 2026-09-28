@@ -10,4 +10,3 @@ export class AuditLogRepo extends AbstractRepo<TAuditLog> {
     super(auditLogModel);
   }
 }
-

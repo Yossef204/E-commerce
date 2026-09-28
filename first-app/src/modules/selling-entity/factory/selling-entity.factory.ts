@@ -44,4 +44,3 @@ export class SellingEntityFactory {
     return entity;
   }
 }
-

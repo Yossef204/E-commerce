@@ -23,4 +23,3 @@ import { JwtModule } from '@nestjs/jwt';
   exports: [OrderService],
 })
 export class OrderModule {}
-

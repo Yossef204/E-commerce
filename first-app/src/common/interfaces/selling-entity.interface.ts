@@ -18,4 +18,3 @@ export interface ISellingEntity {
   businessDetails?: IBusinessDetails;
   rejectionReason?: string;
 }
-

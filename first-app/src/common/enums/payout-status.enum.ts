@@ -4,4 +4,3 @@ export enum PayoutStatusEnum {
   PAID = 'PAID',
   FAILED = 'FAILED',
 }
-

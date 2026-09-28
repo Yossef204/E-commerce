@@ -10,4 +10,3 @@ export class UpdateEntityStatusDto {
   @IsString()
   rejectionReason?: string;
 }
-

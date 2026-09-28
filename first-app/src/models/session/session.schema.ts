@@ -7,7 +7,12 @@ export type TSession = Session & Document;
 export class Session {
   _id: Types.ObjectId;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  })
   userId: Types.ObjectId;
 
   @Prop({ type: String, required: true })
@@ -30,4 +35,3 @@ export const SessionSchema = SchemaFactory.createForClass(Session);
 
 // Additional compound index for fast active session lookup per user
 SessionSchema.index({ userId: 1, isRevoked: 1 });
-

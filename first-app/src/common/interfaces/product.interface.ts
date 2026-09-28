@@ -25,4 +25,3 @@ export interface IProduct {
   subImages?: string[];
   rejectionReason?: string;
 }
-

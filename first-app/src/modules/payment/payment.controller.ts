@@ -42,4 +42,3 @@ export class PaymentController {
     return this.paymentService.getSellerFinancialSummary(sellingEntityId);
   }
 }
-

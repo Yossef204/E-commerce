@@ -27,4 +27,3 @@ import { PaymentFactory } from './factory/payment.factory';
   exports: [PaymentService],
 })
 export class PaymentModule {}
-

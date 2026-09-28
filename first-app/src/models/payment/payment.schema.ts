@@ -23,7 +23,12 @@ export class Payment {
   @Prop({ required: true, enum: PaymentMethodEnum, type: String })
   paymentMethod: PaymentMethodEnum;
 
-  @Prop({ required: true, enum: PaymentStatusEnum, default: PaymentStatusEnum.PENDING, type: String })
+  @Prop({
+    required: true,
+    enum: PaymentStatusEnum,
+    default: PaymentStatusEnum.PENDING,
+    type: String,
+  })
   status: PaymentStatusEnum;
 
   @Prop({ required: true, type: String })
@@ -38,4 +43,3 @@ export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ idempotencyKey: 1 }, { unique: true });
 PaymentSchema.index({ mainOrderId: 1, status: 1 });
 PaymentSchema.index({ customerId: 1, createdAt: -1 });
-

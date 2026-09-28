@@ -5,4 +5,3 @@ export enum PaymentStatusEnum {
   FAILED = 'FAILED',
   REFUNDED = 'REFUNDED',
 }
-

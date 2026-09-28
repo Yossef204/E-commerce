@@ -10,4 +10,3 @@ export class PaymentRepo extends AbstractRepo<TPayment> {
     super(paymentModel);
   }
 }
-

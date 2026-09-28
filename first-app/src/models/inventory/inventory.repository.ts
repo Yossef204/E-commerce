@@ -14,7 +14,10 @@ export class InventoryRepo extends AbstractRepo<TInventory> {
    * Atomic stock reservation using lock-free conditional query ($gte) and $inc update.
    * Eliminates race conditions and overselling completely.
    */
-  public async reserveStockAtomic(sku: string, quantity: number): Promise<boolean> {
+  public async reserveStockAtomic(
+    sku: string,
+    quantity: number,
+  ): Promise<boolean> {
     const result = await this._model
       .updateOne(
         { sku, availableStock: { $gte: quantity } },
@@ -33,7 +36,10 @@ export class InventoryRepo extends AbstractRepo<TInventory> {
   /**
    * Atomic stock release to return reserved stock back to available stock (e.g. order cancellation/timeout).
    */
-  public async releaseStockAtomic(sku: string, quantity: number): Promise<void> {
+  public async releaseStockAtomic(
+    sku: string,
+    quantity: number,
+  ): Promise<void> {
     await this._model
       .updateOne(
         { sku, reservedStock: { $gte: quantity } },
@@ -63,4 +69,3 @@ export class InventoryRepo extends AbstractRepo<TInventory> {
       .exec();
   }
 }
-

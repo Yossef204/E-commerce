@@ -5,4 +5,3 @@ export class ProcessPayoutDto {
   @IsString()
   sellingEntityId: string;
 }
-

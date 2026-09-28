@@ -6,4 +6,3 @@ export class PaymentReceivedEvent {
     public readonly amount: number,
   ) {}
 }
-

@@ -17,4 +17,3 @@ import { Session, SessionSchema } from '../../models/session/session.schema';
   exports: [SessionRepo],
 })
 export class SessionMongoModule {}
-

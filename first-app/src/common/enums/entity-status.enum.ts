@@ -4,4 +4,3 @@ export enum EntityStatusEnum {
   REJECTED = 'REJECTED',
   DEACTIVATED = 'DEACTIVATED',
 }
-

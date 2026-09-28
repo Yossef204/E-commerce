@@ -23,8 +23,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PaymentReceivedEvent } from '../../common/events/payment-received.event';
 import { AuditLogEvent } from '../../common/events/audit-log.event';
 import { AuditActionEnum } from '../../common/enums/audit-action.enum';
+import { EscrowReleasedEvent } from '../notification/events/notification.events';
 
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
+import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
 
 @Injectable()
 export class PaymentService {
@@ -35,6 +37,7 @@ export class PaymentService {
     private readonly mainOrderRepo: MainOrderRepo,
     private readonly entityOrderRepo: EntityOrderRepo,
     private readonly inventoryRepo: InventoryRepo,
+    private readonly sellingEntityRepo: SellingEntityRepo,
     private readonly paymentFactory: PaymentFactory,
     private readonly eventEmitter: EventEmitter2,
   ) {}
@@ -193,6 +196,23 @@ export class PaymentService {
       },
     );
 
+    const sellingEntity = await this.sellingEntityRepo.getOne({
+      _id: escrow.sellingEntityId,
+    });
+    const vendorOwnerId = sellingEntity
+      ? sellingEntity.primaryOwnerId.toString()
+      : '';
+
+    this.eventEmitter.emit(
+      'escrow.released',
+      new EscrowReleasedEvent(
+        dto.entityOrderId,
+        escrow.sellingEntityId.toString(),
+        vendorOwnerId,
+        escrow.netAmount,
+      ),
+    );
+
     return {
       message: 'Escrow funds released to vendor net balance successfully',
       escrow: updatedEscrow,
@@ -298,4 +318,3 @@ export class PaymentService {
     };
   }
 }
-

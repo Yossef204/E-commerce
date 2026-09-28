@@ -49,7 +49,10 @@ export class ProductController {
     @Body() updateInventoryDto: UpdateInventoryDto,
     @Body('ownerId') ownerId: string,
   ) {
-    return this.productService.updateInventoryStock(ownerId, updateInventoryDto);
+    return this.productService.updateInventoryStock(
+      ownerId,
+      updateInventoryDto,
+    );
   }
 
   @Post('inventory/reserve')

@@ -10,4 +10,3 @@ export class SessionRepo extends AbstractRepo<TSession> {
     super(sessionModel);
   }
 }
-

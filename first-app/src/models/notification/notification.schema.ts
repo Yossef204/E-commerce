@@ -17,7 +17,12 @@ export class Notification {
   @Prop({ required: true, type: String })
   body: string;
 
-  @Prop({ required: true, enum: NotificationChannelEnum, default: NotificationChannelEnum.IN_APP, type: String })
+  @Prop({
+    required: true,
+    enum: NotificationChannelEnum,
+    default: NotificationChannelEnum.IN_APP,
+    type: String,
+  })
   channel: NotificationChannelEnum;
 
   @Prop({ required: true, enum: NotificationTypeEnum, type: String })
@@ -33,4 +38,3 @@ export class Notification {
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
 
 NotificationSchema.index({ userId: 1, isRead: 1, createdAt: -1 });
-

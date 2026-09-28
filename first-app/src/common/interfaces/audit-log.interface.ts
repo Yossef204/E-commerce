@@ -13,4 +13,3 @@ export interface IAuditLog {
   createdAt?: Date;
   updatedAt?: Date;
 }
-

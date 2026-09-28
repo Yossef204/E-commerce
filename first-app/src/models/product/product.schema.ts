@@ -22,7 +22,8 @@ export class ProductVariant {
   isActive: boolean;
 }
 
-export const ProductVariantSchema = SchemaFactory.createForClass(ProductVariant);
+export const ProductVariantSchema =
+  SchemaFactory.createForClass(ProductVariant);
 
 @Schema({ timestamps: true })
 export class Product {
@@ -31,7 +32,13 @@ export class Product {
   @Prop({ type: String, required: true, trim: true })
   title: string;
 
-  @Prop({ type: String, required: true, lowercase: true, trim: true, index: true })
+  @Prop({
+    type: String,
+    required: true,
+    lowercase: true,
+    trim: true,
+    index: true,
+  })
   slug: string;
 
   @Prop({ type: String, default: null })

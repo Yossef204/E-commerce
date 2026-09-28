@@ -9,4 +9,3 @@ export class CheckoutItemDto {
   @Min(1)
   quantity: number;
 }
-

@@ -16,4 +16,3 @@ export class CheckoutDto {
   @IsNotEmpty()
   idempotencyKey: string;
 }
-

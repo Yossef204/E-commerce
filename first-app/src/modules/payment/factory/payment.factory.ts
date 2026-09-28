@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { EscrowStatusEnum } from '../../../common/enums/escrow-status.enum';
-import { IEscrowLedger, IVendorPayout } from '../../../common/interfaces/payment.interface';
+import {
+  IEscrowLedger,
+  IVendorPayout,
+} from '../../../common/interfaces/payment.interface';
 import { PayoutStatusEnum } from '../../../common/enums/payout-status.enum';
 
 @Injectable()
 export class PaymentFactory {
-  private readonly DEFAULT_COMMISSION_RATE = 0.10; // 10% platform commission
+  private readonly DEFAULT_COMMISSION_RATE = 0.1; // 10% platform commission
 
   public buildEscrowEntry(
     mainOrderId: Types.ObjectId | string,
@@ -50,4 +53,3 @@ export class PaymentFactory {
     };
   }
 }
-

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { MainOrder } from '../../../models/order/main-order.schema';
-import { EntityOrder, StatusHistoryEntry } from '../../../models/order/entity-order.schema';
+import {
+  EntityOrder,
+  StatusHistoryEntry,
+} from '../../../models/order/entity-order.schema';
 import { OrderItem } from '../../../models/order/order-item.schema';
 import { MainOrderStatusEnum } from '../../../common/enums/main-order-status.enum';
 import { EntityOrderStatusEnum } from '../../../common/enums/entity-order-status.enum';
@@ -92,4 +95,3 @@ export class OrderFactory {
     return entityOrders;
   }
 }
-

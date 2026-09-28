@@ -22,4 +22,3 @@ export class OrderItem {
 }
 
 export const OrderItemSchema = SchemaFactory.createForClass(OrderItem);
-

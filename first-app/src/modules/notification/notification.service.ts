@@ -29,7 +29,9 @@ export class NotificationService {
     if (channel === NotificationChannelEnum.EMAIL) {
       this.logger.log(`Simulating EMAIL dispatch to user #${userId}: ${title}`);
     } else if (channel === NotificationChannelEnum.PUSH) {
-      this.logger.log(`Simulating FCM PUSH dispatch to user #${userId}: ${title}`);
+      this.logger.log(
+        `Simulating FCM PUSH dispatch to user #${userId}: ${title}`,
+      );
     }
 
     // Always record In-App notification copy for user inbox
@@ -64,7 +66,10 @@ export class NotificationService {
         );
       }
     } catch (err) {
-      this.logger.error('Error in handleOrderPlaced notification listener', err);
+      this.logger.error(
+        'Error in handleOrderPlaced notification listener',
+        err,
+      );
     }
   }
 
@@ -80,7 +85,10 @@ export class NotificationService {
         { paymentId: event.paymentId, mainOrderId: event.mainOrderId },
       );
     } catch (err) {
-      this.logger.error('Error in handlePaymentReceived notification listener', err);
+      this.logger.error(
+        'Error in handlePaymentReceived notification listener',
+        err,
+      );
     }
   }
 
@@ -108,4 +116,3 @@ export class NotificationService {
     );
   }
 }
-

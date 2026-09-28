@@ -21,7 +21,8 @@ export class StatusHistoryEntry {
   note?: string;
 }
 
-export const StatusHistoryEntrySchema = SchemaFactory.createForClass(StatusHistoryEntry);
+export const StatusHistoryEntrySchema =
+  SchemaFactory.createForClass(StatusHistoryEntry);
 
 @Schema({ timestamps: true })
 export class EntityOrder {
@@ -65,4 +66,3 @@ export const EntityOrderSchema = SchemaFactory.createForClass(EntityOrder);
 // Compound indexes
 EntityOrderSchema.index({ sellingEntityId: 1, status: 1, createdAt: -1 });
 EntityOrderSchema.index({ mainOrderId: 1 });
-

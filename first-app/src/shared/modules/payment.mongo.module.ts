@@ -11,4 +11,3 @@ import { PaymentRepo } from '../../models/payment/payment.repository';
   exports: [PaymentRepo],
 })
 export class PaymentMongoModule {}
-

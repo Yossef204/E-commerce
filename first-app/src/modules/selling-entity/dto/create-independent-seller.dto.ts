@@ -1,4 +1,10 @@
-import { IsNotEmpty, IsOptional, IsPhoneNumber, IsString, MinLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsPhoneNumber,
+  IsString,
+  MinLength,
+} from 'class-validator';
 
 export class CreateIndependentSellerDto {
   @IsString()
@@ -18,4 +24,3 @@ export class CreateIndependentSellerDto {
   @IsString()
   address?: string;
 }
-

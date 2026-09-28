@@ -18,4 +18,3 @@ export class AuditController {
     return this.auditService.getAuditLogsByActor(actorId);
   }
 }
-

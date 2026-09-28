@@ -5,4 +5,3 @@ export enum MainOrderStatusEnum {
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
 }
-

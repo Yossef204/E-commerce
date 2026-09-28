@@ -4,4 +4,3 @@ export enum PaymentMethodEnum {
   WALLET = 'WALLET',
   CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
 }
-

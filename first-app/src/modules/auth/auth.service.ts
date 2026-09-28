@@ -34,7 +34,9 @@ export class AuthService {
   async register(registerAuthDto: RegisterAuthDto) {
     const { userName, email, password, phoneNumber } = registerAuthDto;
 
-    const existingUser = await this.userRepo.getOne({ email: email.toLowerCase() });
+    const existingUser = await this.userRepo.getOne({
+      email: email.toLowerCase(),
+    });
     if (existingUser) {
       throw new ConflictException('Email already in use');
     }
@@ -75,7 +77,8 @@ export class AuthService {
     } = rawUser;
 
     return {
-      message: 'User registered successfully. Please verify your email using the OTP sent.',
+      message:
+        'User registered successfully. Please verify your email using the OTP sent.',
       user: userResponse,
     };
   }
@@ -92,8 +95,13 @@ export class AuthService {
       return { message: 'Email is already verified' };
     }
 
-    if (!user.emailVerificationOtpExpiresAt || new Date() > new Date(user.emailVerificationOtpExpiresAt)) {
-      throw new BadRequestException('OTP has expired. Please request a new one');
+    if (
+      !user.emailVerificationOtpExpiresAt ||
+      new Date() > new Date(user.emailVerificationOtpExpiresAt)
+    ) {
+      throw new BadRequestException(
+        'OTP has expired. Please request a new one',
+      );
     }
 
     if (!user.emailVerificationOtpHash) {
@@ -134,11 +142,15 @@ export class AuthService {
 
     const status = user.status ?? AccountStatusEnum.ACTIVE;
     if (status !== AccountStatusEnum.ACTIVE) {
-      throw new ForbiddenException(`Account is ${status.toLowerCase()}. Access denied.`);
+      throw new ForbiddenException(
+        `Account is ${status.toLowerCase()}. Access denied.`,
+      );
     }
 
     if (user.role === RolesEnum.CUSTOMER && !user.isEmailVerified) {
-      throw new UnauthorizedException('Email not verified. Please verify your email first.');
+      throw new UnauthorizedException(
+        'Email not verified. Please verify your email first.',
+      );
     }
 
     const payload = {
@@ -189,7 +201,11 @@ export class AuthService {
     }
 
     const user = await this.userRepo.getOne({ _id: payload.sub });
-    if (!user || !user._id || (user.status && user.status !== AccountStatusEnum.ACTIVE)) {
+    if (
+      !user ||
+      !user._id ||
+      (user.status && user.status !== AccountStatusEnum.ACTIVE)
+    ) {
       throw new ForbiddenException('User account is inactive or deleted');
     }
 
@@ -200,7 +216,10 @@ export class AuthService {
 
     let matchedSession: any = null;
     for (const session of activeSessions) {
-      const isMatch = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+      const isMatch = await bcrypt.compare(
+        refreshToken,
+        session.refreshTokenHash,
+      );
       if (isMatch) {
         matchedSession = session;
         break;
@@ -212,7 +231,10 @@ export class AuthService {
     }
 
     // Revoke old session (Token Rotation)
-    await this.sessionRepo.updateOne({ _id: matchedSession._id }, { isRevoked: true });
+    await this.sessionRepo.updateOne(
+      { _id: matchedSession._id },
+      { isRevoked: true },
+    );
 
     // Generate new Access and Refresh tokens
     const newPayload = {

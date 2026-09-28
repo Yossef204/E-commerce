@@ -21,9 +21,15 @@ import { PaymentMethodEnum } from '../common/enums/payment-method.enum';
 import { EntityOrderStatusEnum } from '../common/enums/entity-order-status.enum';
 
 async function bootstrap() {
-  console.log('================================================================');
-  console.log('🚀 Starting Multi-Vendor E-Commerce Seed & End-to-End Test Script');
-  console.log('================================================================\n');
+  console.log(
+    '================================================================',
+  );
+  console.log(
+    '🚀 Starting Multi-Vendor E-Commerce Seed & End-to-End Test Script',
+  );
+  console.log(
+    '================================================================\n',
+  );
 
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: false, // Clean console output
@@ -45,7 +51,7 @@ async function bootstrap() {
     // STEP 1: Seed Users (Super Admin, Seller, Customer)
     // -------------------------------------------------------------------------
     console.log('🔹 STEP 1: Seeding Users...');
-    
+
     // Cleanup previous seed users
     const seedEmails = [
       'admin.seed@platform.com',
@@ -91,8 +97,10 @@ async function bootstrap() {
     // STEP 2: Create & Approve Selling Entity
     // -------------------------------------------------------------------------
     console.log('🔹 STEP 2: Creating & Approving Selling Entity...');
-    
-    await sellingEntityRepo.deleteOne({ legalName: 'TechZone Electronics Ltd' });
+
+    await sellingEntityRepo.deleteOne({
+      legalName: 'TechZone Electronics Ltd',
+    });
 
     const sellingEntity = await sellingEntityRepo.create({
       legalName: 'TechZone Electronics Ltd',
@@ -107,7 +115,9 @@ async function bootstrap() {
       },
     });
 
-    console.log(`   ✅ Selling Entity created: "${sellingEntity.legalName}" (ID: ${sellingEntity._id})`);
+    console.log(
+      `   ✅ Selling Entity created: "${sellingEntity.legalName}" (ID: ${sellingEntity._id})`,
+    );
     console.log(`   ✅ Entity Status: ${sellingEntity.status}\n`);
 
     // -------------------------------------------------------------------------
@@ -154,15 +164,19 @@ async function bootstrap() {
       reservedStock: 0,
     });
 
-    console.log(`   ✅ Product created: "${product.title}" (ID: ${product._id})`);
+    console.log(
+      `   ✅ Product created: "${product.title}" (ID: ${product._id})`,
+    );
     console.log(`   ✅ Variant SKU: ${sku} @ $100`);
-    console.log(`   ✅ Initial Atomic Stock: Available = ${inventory.availableStock}, Reserved = ${inventory.reservedStock}\n`);
+    console.log(
+      `   ✅ Initial Atomic Stock: Available = ${inventory.availableStock}, Reserved = ${inventory.reservedStock}\n`,
+    );
 
     // -------------------------------------------------------------------------
     // STEP 4: Customer Checkout Flow (2 items @ $100 = $200)
     // -------------------------------------------------------------------------
     console.log('🔹 STEP 4: Simulating Customer Checkout (2 Units)...');
-    
+
     const customerIdStr = customer._id!.toString();
     const checkoutResult = await orderService.checkout(customerIdStr, {
       items: [{ sku, quantity: 2 }],
@@ -172,11 +186,17 @@ async function bootstrap() {
 
     const updatedInvAfterReservation = await inventoryRepo.getOne({ sku });
 
-    console.log(`   ✅ Order Checkout Executed! Main Order ID: ${checkoutResult.mainOrder._id}`);
+    console.log(
+      `   ✅ Order Checkout Executed! Main Order ID: ${checkoutResult.mainOrder._id}`,
+    );
     console.log(`   ✅ Order Number: ${checkoutResult.mainOrder.orderNumber}`);
     console.log(`   ✅ Total Amount: $${checkoutResult.mainOrder.totalAmount}`);
-    console.log(`   ✅ Vendor Sub-Orders Split: ${checkoutResult.entityOrders.length}`);
-    console.log(`   🔒 Atomic Stock Reservation Check: Available = ${updatedInvAfterReservation?.availableStock} (Expected 18), Reserved = ${updatedInvAfterReservation?.reservedStock} (Expected 2)\n`);
+    console.log(
+      `   ✅ Vendor Sub-Orders Split: ${checkoutResult.entityOrders.length}`,
+    );
+    console.log(
+      `   🔒 Atomic Stock Reservation Check: Available = ${updatedInvAfterReservation?.availableStock} (Expected 18), Reserved = ${updatedInvAfterReservation?.reservedStock} (Expected 2)\n`,
+    );
 
     // -------------------------------------------------------------------------
     // STEP 5: Payment Processing & Escrow Allocation
@@ -197,9 +217,13 @@ async function bootstrap() {
       entityOrderId: checkoutResult.entityOrders[0]._id,
     });
 
-    console.log(`   ✅ Payment Captured! Transaction ID: ${paymentResult.payment.transactionId}`);
+    console.log(
+      `   ✅ Payment Captured! Transaction ID: ${paymentResult.payment.transactionId}`,
+    );
     console.log(`   ✅ Main Order Status: PAID`);
-    console.log(`   🔒 Stock Committed: Reserved Stock = ${updatedInvAfterCommit?.reservedStock} (Expected 0)`);
+    console.log(
+      `   🔒 Stock Committed: Reserved Stock = ${updatedInvAfterCommit?.reservedStock} (Expected 0)`,
+    );
     console.log(`   💰 Escrow Ledger Created for Vendor:`);
     console.log(`      - Gross Amount:  $${escrowEntry?.grossAmount}`);
     console.log(`      - Platform Fee (10%): $${escrowEntry?.platformFee}`);
@@ -209,7 +233,9 @@ async function bootstrap() {
     // -------------------------------------------------------------------------
     // STEP 6: Fulfillment, Escrow Release & Vendor Payout Batch
     // -------------------------------------------------------------------------
-    console.log('🔹 STEP 6: Simulating Delivery, Escrow Release & Vendor Payout...');
+    console.log(
+      '🔹 STEP 6: Simulating Delivery, Escrow Release & Vendor Payout...',
+    );
 
     const entityOrderIdStr = checkoutResult.entityOrders[0]._id.toString();
 
@@ -236,19 +262,33 @@ async function bootstrap() {
 
     console.log(`   ✅ Entity Order Status: DELIVERED`);
     console.log(`   ✅ Escrow Status: ${releaseResult.escrow?.status}`);
-    console.log(`   ✅ Vendor Payout Batch Generated! Reference: ${payoutResult.payout.payoutReference}`);
-    console.log(`   ✅ Payout Total Amount Transferred: $${payoutResult.payout.totalAmount}`);
-    console.log(`   📊 Seller Financial Summary:`, JSON.stringify(financialSummary.summary, null, 2));
+    console.log(
+      `   ✅ Vendor Payout Batch Generated! Reference: ${payoutResult.payout.payoutReference}`,
+    );
+    console.log(
+      `   ✅ Payout Total Amount Transferred: $${payoutResult.payout.totalAmount}`,
+    );
+    console.log(
+      `   📊 Seller Financial Summary:`,
+      JSON.stringify(financialSummary.summary, null, 2),
+    );
 
     // -------------------------------------------------------------------------
     // STEP 7: Final End-to-End Summary Report
     // -------------------------------------------------------------------------
-    console.log('\n================================================================');
+    console.log(
+      '\n================================================================',
+    );
     console.log('🎉 END-TO-END BUSINESS FLOW VERIFICATION COMPLETE');
-    console.log('================================================================');
-    console.log('✔️ All 6 Core Domains Verified Successfully with 100% Precision!');
-    console.log('================================================================\n');
-
+    console.log(
+      '================================================================',
+    );
+    console.log(
+      '✔️ All 6 Core Domains Verified Successfully with 100% Precision!',
+    );
+    console.log(
+      '================================================================\n',
+    );
   } catch (error) {
     console.error('❌ Error during Seed & Test execution:', error);
   } finally {
@@ -257,4 +297,3 @@ async function bootstrap() {
 }
 
 void bootstrap();
-

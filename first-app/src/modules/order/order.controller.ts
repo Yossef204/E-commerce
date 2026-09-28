@@ -58,4 +58,3 @@ export class OrderController {
     return this.orderService.getEntityOrders(ownerId, sellingEntityId);
   }
 }
-

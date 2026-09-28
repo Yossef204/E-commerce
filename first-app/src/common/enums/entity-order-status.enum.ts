@@ -6,4 +6,3 @@ export enum EntityOrderStatusEnum {
   DELIVERED = 'DELIVERED',
   CANCELLED = 'CANCELLED',
 }
-

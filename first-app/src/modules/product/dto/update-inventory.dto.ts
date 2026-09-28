@@ -13,4 +13,3 @@ export class UpdateInventoryDto {
   @IsNotEmpty()
   operation: 'ADD' | 'SET';
 }
-

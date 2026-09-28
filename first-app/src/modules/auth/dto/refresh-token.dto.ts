@@ -13,4 +13,3 @@ export class RefreshTokenDto {
   @IsString()
   ipAddress?: string;
 }
-

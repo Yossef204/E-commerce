@@ -7,4 +7,3 @@ export class OrderPlacedEvent {
     public readonly sellerEntityIds: string[],
   ) {}
 }
-

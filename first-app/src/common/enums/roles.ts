@@ -1,9 +1,8 @@
 export enum RolesEnum {
   user = 'user',
-  admin = 'admin',
-  seller = 'seller',
-  CUSTOMER = 'CUSTOMER',
-  SELLER = 'SELLER',
-  COMPANY_ADMIN = 'COMPANY_ADMIN',
-  SUPER_ADMIN = 'SUPER_ADMIN',
+  CUSTOMER = 'customer',
+  SELLER = 'seller',
+  COMPANY_ADMIN = 'company_admin',
+  SUPER_ADMIN = 'admin'
 }
+

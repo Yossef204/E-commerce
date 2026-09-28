@@ -9,4 +9,3 @@ export class ReleaseEscrowDto {
   @IsString()
   reason?: string;
 }
-

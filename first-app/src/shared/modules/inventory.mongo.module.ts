@@ -20,4 +20,3 @@ import {
   exports: [InventoryRepo],
 })
 export class InventoryMongoModule {}
-

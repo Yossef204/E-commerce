@@ -10,4 +10,3 @@ export class PayoutRepo extends AbstractRepo<TPayout> {
     super(payoutModel);
   }
 }
-

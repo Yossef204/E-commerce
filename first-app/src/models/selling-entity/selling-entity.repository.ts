@@ -6,8 +6,9 @@ import { SellingEntity, TSellingEntity } from './selling-entity.schema';
 
 @Injectable()
 export class SellingEntityRepo extends AbstractRepo<TSellingEntity> {
-  constructor(@InjectModel(SellingEntity.name) sellingEntityModel: Model<TSellingEntity>) {
+  constructor(
+    @InjectModel(SellingEntity.name) sellingEntityModel: Model<TSellingEntity>,
+  ) {
     super(sellingEntityModel);
   }
 }
-

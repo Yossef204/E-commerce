@@ -10,13 +10,21 @@ export class VendorPayout {
   @Prop({ type: Types.ObjectId, ref: 'SellingEntity', required: true })
   sellingEntityId: Types.ObjectId;
 
-  @Prop({ type: [{ type: Types.ObjectId, ref: 'EscrowLedger' }], required: true })
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'EscrowLedger' }],
+    required: true,
+  })
   escrowIds: Types.ObjectId[];
 
   @Prop({ required: true, type: Number })
   totalAmount: number;
 
-  @Prop({ required: true, enum: PayoutStatusEnum, default: PayoutStatusEnum.PENDING, type: String })
+  @Prop({
+    required: true,
+    enum: PayoutStatusEnum,
+    default: PayoutStatusEnum.PENDING,
+    type: String,
+  })
   status: PayoutStatusEnum;
 
   @Prop({ required: true, type: String, unique: true })
@@ -29,4 +37,3 @@ export class VendorPayout {
 export const VendorPayoutSchema = SchemaFactory.createForClass(VendorPayout);
 
 VendorPayoutSchema.index({ sellingEntityId: 1, status: 1, createdAt: -1 });
-

@@ -11,4 +11,3 @@ export class AuditLogEvent {
     public readonly ipAddress?: string,
   ) {}
 }
-

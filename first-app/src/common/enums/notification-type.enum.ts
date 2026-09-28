@@ -5,4 +5,3 @@ export enum NotificationTypeEnum {
   ESCROW_RELEASED = 'ESCROW_RELEASED',
   PAYOUT_PROCESSED = 'PAYOUT_PROCESSED',
 }
-

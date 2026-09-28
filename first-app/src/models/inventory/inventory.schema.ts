@@ -13,7 +13,12 @@ export class Inventory {
   @Prop({ type: String, default: null })
   variantId: string;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    required: true,
+    index: true,
+  })
   productId: Types.ObjectId;
 
   @Prop({ type: Number, required: true, min: 0, default: 0 })
@@ -27,4 +32,3 @@ export const InventorySchema = SchemaFactory.createForClass(Inventory);
 
 // Compound index for atomic queries
 InventorySchema.index({ sku: 1, availableStock: 1 });
-

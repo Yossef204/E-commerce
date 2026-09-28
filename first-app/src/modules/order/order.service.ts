@@ -21,6 +21,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderPlacedEvent } from '../../common/events/order-placed.event';
 import { AuditLogEvent } from '../../common/events/audit-log.event';
 import { AuditActionEnum } from '../../common/enums/audit-action.enum';
+import {
+  OrderCreatedEvent,
+  OrderStatusUpdatedEvent,
+} from '../notification/events/notification.events';
 
 @Injectable()
 export class OrderService {
@@ -62,21 +66,34 @@ export class OrderService {
     // 2. Resolve Cart Items & Prices
     const resolvedItems: ResolvedCartItem[] = [];
     for (const itemDto of checkoutDto.items) {
-      const inventory = await this.inventoryRepo.getOne({ sku: itemDto.sku.trim() });
+      const inventory = await this.inventoryRepo.getOne({
+        sku: itemDto.sku.trim(),
+      });
       if (!inventory) {
-        throw new NotFoundException(`Inventory record for SKU "${itemDto.sku}" not found`);
+        throw new NotFoundException(
+          `Inventory record for SKU "${itemDto.sku}" not found`,
+        );
       }
 
-      const product = await this.productRepo.getOne({ _id: inventory.productId });
-      if (!product || product.approvalStatus !== ProductApprovalStatusEnum.APPROVED) {
+      const product = await this.productRepo.getOne({
+        _id: inventory.productId,
+      });
+      if (
+        !product ||
+        product.approvalStatus !== ProductApprovalStatusEnum.APPROVED
+      ) {
         throw new BadRequestException(
           `Product for SKU "${itemDto.sku}" is not available or approved for purchase`,
         );
       }
 
-      const variant = product.variants.find((v) => v.sku === itemDto.sku.trim());
+      const variant = product.variants.find(
+        (v) => v.sku === itemDto.sku.trim(),
+      );
       if (!variant || !variant.isActive) {
-        throw new BadRequestException(`Variant for SKU "${itemDto.sku}" is inactive`);
+        throw new BadRequestException(
+          `Variant for SKU "${itemDto.sku}" is inactive`,
+        );
       }
 
       const unitPrice = variant.price;
@@ -115,7 +132,10 @@ export class OrderService {
     }
 
     // 4. Calculate total amount & split orders by selling entity
-    const totalAmount = resolvedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const totalAmount = resolvedItems.reduce(
+      (sum, item) => sum + item.totalPrice,
+      0,
+    );
 
     const mainOrderData = this.orderFactory.createMainOrderEntity(
       customerId,
@@ -142,14 +162,26 @@ export class OrderService {
     }
 
     // 6. Emit Non-Blocking Events
-    // 5. Emit Non-Blocking Events
-    const sellerEntityIds = createdEntityOrders.map((eo) => eo.sellingEntityId.toString());
+    const sellerEntityIds = createdEntityOrders.map((eo) =>
+      eo.sellingEntityId.toString(),
+    );
     this.eventEmitter.emit(
       'order.placed',
       new OrderPlacedEvent(
         createdMainOrder._id.toString(),
         createdMainOrder.orderNumber,
         customerIdStr,
+        createdMainOrder.totalAmount,
+        sellerEntityIds,
+      ),
+    );
+
+    this.eventEmitter.emit(
+      'order.created',
+      new OrderCreatedEvent(
+        createdMainOrder._id.toString(),
+        customerIdStr,
+        createdMainOrder.orderNumber,
         createdMainOrder.totalAmount,
         sellerEntityIds,
       ),
@@ -163,7 +195,10 @@ export class OrderService {
         'MainOrder',
         createdMainOrder._id.toString(),
         undefined,
-        { status: createdMainOrder.status, totalAmount: createdMainOrder.totalAmount },
+        {
+          status: createdMainOrder.status,
+          totalAmount: createdMainOrder.totalAmount,
+        },
       ),
     );
 
@@ -184,7 +219,9 @@ export class OrderService {
     }
     const entityOrderId = new Types.ObjectId(entityOrderIdStr);
 
-    const entityOrder = await this.entityOrderRepo.getOne({ _id: entityOrderId });
+    const entityOrder = await this.entityOrderRepo.getOne({
+      _id: entityOrderId,
+    });
     if (!entityOrder) {
       throw new NotFoundException('Entity order not found');
     }
@@ -192,8 +229,13 @@ export class OrderService {
     const sellingEntity = await this.sellingEntityRepo.getOne({
       _id: entityOrder.sellingEntityId,
     });
-    if (!sellingEntity || sellingEntity.primaryOwnerId.toString() !== ownerIdStr) {
-      throw new ForbiddenException('Access denied: You do not own this selling entity');
+    if (
+      !sellingEntity ||
+      sellingEntity.primaryOwnerId.toString() !== ownerIdStr
+    ) {
+      throw new ForbiddenException(
+        'Access denied: You do not own this selling entity',
+      );
     }
 
     const newHistoryEntry = {
@@ -202,7 +244,10 @@ export class OrderService {
       note: updateDto.note || `Status updated to ${updateDto.status}`,
     };
 
-    const updatedHistory = [...(entityOrder.statusHistory || []), newHistoryEntry];
+    const updatedHistory = [
+      ...(entityOrder.statusHistory || []),
+      newHistoryEntry,
+    ];
 
     const updatedEntityOrder = await this.entityOrderRepo.updateOne(
       { _id: entityOrderId },
@@ -235,6 +280,21 @@ export class OrderService {
       await this.mainOrderRepo.updateOne(
         { _id: entityOrder.mainOrderId },
         { status: MainOrderStatusEnum.PARTIALLY_FULFILLED },
+      );
+    }
+
+    const mainOrder = await this.mainOrderRepo.getOne({
+      _id: entityOrder.mainOrderId,
+    });
+    if (mainOrder) {
+      this.eventEmitter.emit(
+        'order.status_updated',
+        new OrderStatusUpdatedEvent(
+          entityOrderIdStr,
+          mainOrder.customerId.toString(),
+          updateDto.status,
+          updateDto.note,
+        ),
       );
     }
 
@@ -275,9 +335,16 @@ export class OrderService {
     }
     const sellingEntityId = new Types.ObjectId(sellingEntityIdStr);
 
-    const sellingEntity = await this.sellingEntityRepo.getOne({ _id: sellingEntityId });
-    if (!sellingEntity || sellingEntity.primaryOwnerId.toString() !== ownerIdStr) {
-      throw new ForbiddenException('Access denied: You do not own this selling entity');
+    const sellingEntity = await this.sellingEntityRepo.getOne({
+      _id: sellingEntityId,
+    });
+    if (
+      !sellingEntity ||
+      sellingEntity.primaryOwnerId.toString() !== ownerIdStr
+    ) {
+      throw new ForbiddenException(
+        'Access denied: You do not own this selling entity',
+      );
     }
 
     const entityOrders = await this.entityOrderRepo.getAll({ sellingEntityId });
@@ -287,4 +354,3 @@ export class OrderService {
     };
   }
 }
-

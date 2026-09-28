@@ -8,7 +8,12 @@ export type TMainOrder = MainOrder & Document;
 export class MainOrder {
   _id: Types.ObjectId;
 
-  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true })
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true,
+  })
   customerId: Types.ObjectId;
 
   @Prop({ type: String, required: true, unique: true, index: true })
@@ -35,4 +40,3 @@ export const MainOrderSchema = SchemaFactory.createForClass(MainOrder);
 
 // Compound index
 MainOrderSchema.index({ customerId: 1, createdAt: -1 });
-

@@ -4,4 +4,3 @@ export enum AuditActionEnum {
   PAYOUT_GENERATED = 'PAYOUT_GENERATED',
   ENTITY_APPROVAL = 'ENTITY_APPROVAL',
 }
-
