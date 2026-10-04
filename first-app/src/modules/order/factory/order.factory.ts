@@ -32,13 +32,18 @@ export class OrderFactory {
     totalAmount: number,
     idempotencyKey: string,
     shippingAddress: string,
+    discountAmount: number = 0,
+    couponId?: Types.ObjectId | null,
+    couponCode?: string | null,
   ): MainOrder {
     const mainOrder = new MainOrder();
     mainOrder._id = new Types.ObjectId();
     mainOrder.customerId = customerId;
     mainOrder.orderNumber = this.generateOrderNumber();
     mainOrder.totalAmount = totalAmount;
-    mainOrder.status = MainOrderStatusEnum.PAID;
+    mainOrder.discountAmount = discountAmount;
+    mainOrder.couponId = couponId || null;
+    mainOrder.couponCode = couponCode || null;
     mainOrder.status = MainOrderStatusEnum.PENDING_PAYMENT;
     mainOrder.idempotencyKey = idempotencyKey;
     mainOrder.shippingAddress = shippingAddress;
@@ -81,6 +86,9 @@ export class OrderFactory {
       });
 
       entityOrder.subtotal = subtotal;
+      entityOrder.discountAmount = 0;
+      entityOrder.couponId = null;
+      entityOrder.couponCode = null;
       entityOrder.status = EntityOrderStatusEnum.PENDING;
 
       const initialHistory = new StatusHistoryEntry();

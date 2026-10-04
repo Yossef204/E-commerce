@@ -101,3 +101,4 @@ ProductSchema.index({ categoryId: 1, approvalStatus: 1 });
 
 // Text index for fast search
 ProductSchema.index({ title: 'text', slug: 'text' });
+ProductSchema.index({ brandId: 1, approvalStatus: 1 });

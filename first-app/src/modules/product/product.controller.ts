@@ -17,6 +17,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductApprovalDto } from './dto/update-product-approval.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { AuthenticationGuard } from '../../common/guards/authentication.guard';
+import { permissions } from '../../common/decorators/permissions.decorator';
+import { PermissionEnum } from '../../common/enums/permissions.enum';
 
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('products')
@@ -24,6 +26,7 @@ export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
   @UseGuards(AuthenticationGuard)
+  @permissions(PermissionEnum.PRODUCTS_CREATE)
   @Post()
   async createProduct(
     @Body() createProductDto: CreateProductDto,
@@ -33,6 +36,7 @@ export class ProductController {
   }
 
   @UseGuards(AuthenticationGuard)
+  @permissions(PermissionEnum.PRODUCTS_APPROVE)
   @Patch(':id/approval')
   @HttpCode(HttpStatus.OK)
   async updateApprovalStatus(
@@ -43,6 +47,7 @@ export class ProductController {
   }
 
   @UseGuards(AuthenticationGuard)
+  @permissions(PermissionEnum.INVENTORY_MANAGE_OWN)
   @Patch('inventory/stock')
   @HttpCode(HttpStatus.OK)
   async updateInventoryStock(
@@ -69,6 +74,8 @@ export class ProductController {
     return this.productService.findApprovedProducts(categoryId);
   }
 
+  @UseGuards(AuthenticationGuard)
+  @permissions(PermissionEnum.PRODUCTS_READ_OWN)
   @Get('entity/:sellingEntityId')
   async findEntityProducts(@Param('sellingEntityId') sellingEntityId: string) {
     return this.productService.findEntityProducts(sellingEntityId);

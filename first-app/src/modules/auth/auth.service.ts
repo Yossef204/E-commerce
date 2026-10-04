@@ -19,6 +19,9 @@ import { MailService } from '../../shared/mailer/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { RolesEnum } from '../../common/enums/roles';
 import { AccountStatusEnum } from '../../common/enums/account-status';
+import { PermissionRepo } from '../../models/permission/permission.repository';
+import { getDefaultPermissionsForRole } from '../../common/enums/permissions.enum';
+import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
 
 @Injectable()
 export class AuthService {
@@ -29,10 +32,12 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
     private readonly configService: ConfigService,
+    private readonly permissionRepo: PermissionRepo,
+    private readonly sellingEntityRepo: SellingEntityRepo,
   ) {}
 
-  async register(registerAuthDto: RegisterAuthDto) {
-    const { userName, email, password, phoneNumber } = registerAuthDto;
+  async register(registerAuthDto: RegisterAuthDto ) {
+    const { userName, email, password, phoneNumber, role } = registerAuthDto;
 
     const existingUser = await this.userRepo.getOne({
       email: email.toLowerCase(),
@@ -48,16 +53,32 @@ export class AuthService {
     const otpHash = await bcrypt.hash(otp, saltRounds);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes TTL
 
-    const createdUser = await this.customerRepo.create({
+    let userRole: RolesEnum = RolesEnum.CUSTOMER; // Default role
+    if(role){
+      if (!Object.values(RolesEnum).includes(role)) {
+        throw new BadRequestException('Invalid role specified');
+      }
+      userRole = role;
+    }
+    const createdUser = await this.userRepo.create({
       userName,
       email: email.toLowerCase(),
       phoneNumber,
       password: hashedPassword,
+      role: userRole,
       status: AccountStatusEnum.ACTIVE,
       isEmailVerified: false,
       emailVerificationOtpHash: otpHash,
       emailVerificationOtpExpiresAt: otpExpiresAt,
     });
+
+    const userId = createdUser._id
+      ? createdUser._id.toString()
+      : (createdUser as any).id;
+    if (userId) {
+      const defaultPerms = getDefaultPermissionsForRole(userRole);
+      await this.permissionRepo.upsertUserPermissions(userId, defaultPerms);
+    }
 
     await this.mailService.send({
       to: email,
@@ -92,7 +113,19 @@ export class AuthService {
     }
 
     if (user.isEmailVerified) {
-      return { message: 'Email is already verified' };
+      const userIdStr = user._id.toString();
+      return {
+        message: 'Email is already verified',
+        user: {
+          id: userIdStr,
+          email: user.email,
+          userName: user.userName,
+          role: user.role,
+          sellingEntityId: user.sellingEntityId
+            ? user.sellingEntityId.toString()
+            : undefined,
+        },
+      };
     }
 
     if (
@@ -122,8 +155,68 @@ export class AuthService {
       },
     );
 
+    const userId = user._id.toString();
+    const existingPerms = await this.permissionRepo.getOne({ userId });
+    let userPermissions =
+      existingPerms?.permissions && existingPerms.permissions.length > 0
+        ? existingPerms.permissions
+        : getDefaultPermissionsForRole(user.role || RolesEnum.CUSTOMER);
+
+    if (
+      !existingPerms ||
+      !existingPerms.permissions ||
+      existingPerms.permissions.length === 0
+    ) {
+      await this.permissionRepo.upsertUserPermissions(userId, userPermissions);
+    }
+
+    const payload = {
+      sub: userId,
+      email: user.email,
+      role: user.role,
+      sellingEntityId: user.sellingEntityId
+        ? user.sellingEntityId.toString()
+        : undefined,
+      permissions: userPermissions,
+    };
+
+    const accessToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('jwt.accessSecret'),
+      expiresIn: '15m',
+    });
+
+    const refreshToken = this.jwtService.sign(payload, {
+      secret: this.configService.get<string>('jwt.accessSecret'),
+      expiresIn: '7d',
+    });
+
+    const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const session = await this.sessionRepo.create({
+      userId: user._id,
+      refreshTokenHash,
+      deviceInfo: 'Web Browser',
+      ipAddress: '127.0.0.1',
+      isRevoked: false,
+      expiresAt,
+    });
+
     return {
-      message: 'Email verified successfully. You can now login.',
+      message: 'Email verified successfully.',
+      accessToken,
+      refreshToken,
+      sessionId: session._id,
+      user: {
+        id: userId,
+        email: user.email,
+        userName: user.userName,
+        role: user.role,
+        sellingEntityId: user.sellingEntityId
+          ? user.sellingEntityId.toString()
+          : undefined,
+        permissions: userPermissions,
+      },
     };
   }
 
@@ -153,10 +246,61 @@ export class AuthService {
       );
     }
 
+    const userIdStr = user._id.toString();
+    const userPermissionsDoc = await this.permissionRepo.getOne({
+      userId: userIdStr,
+    });
+    const userPermissions: string[] =
+      userPermissionsDoc?.permissions &&
+      userPermissionsDoc.permissions.length > 0
+        ? userPermissionsDoc.permissions
+        : getDefaultPermissionsForRole(user.role);
+
+    // Directly query selling entity for SELLER / COMPANY_ADMIN
+    let sellingEntityId: string | null = null;
+    let entityStatus: string | null = null;
+
+    const userRoleLower = (user.role || '').toLowerCase();
+    if (
+      userRoleLower === RolesEnum.SELLER.toLowerCase() ||
+      userRoleLower === RolesEnum.COMPANY_ADMIN.toLowerCase() ||
+      userRoleLower === 'seller' ||
+      userRoleLower === 'company_admin'
+    ) {
+      const sellingEntity = await this.sellingEntityRepo.getOne({
+        primaryOwnerId: user._id,
+      });
+
+      if (sellingEntity) {
+        sellingEntityId = sellingEntity._id ? sellingEntity._id.toString() : null;
+        entityStatus = sellingEntity.status || null;
+
+        if (!user.sellingEntityId && sellingEntity._id) {
+          await this.userRepo.updateOne(
+            { _id: user._id },
+            { sellingEntityId: sellingEntity._id },
+          );
+        }
+      } else if (user.sellingEntityId) {
+        const entityById = await this.sellingEntityRepo.getOne({
+          _id: user.sellingEntityId,
+        });
+        if (entityById) {
+          sellingEntityId = entityById._id ? entityById._id.toString() : null;
+          entityStatus = entityById.status || null;
+        }
+      }
+    }
+
     const payload = {
-      sub: user._id.toString(),
+      sub: userIdStr,
       email: user.email,
       role: user.role,
+      sellingEntityId:
+        sellingEntityId ||
+        (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
+      entityStatus: entityStatus || undefined,
+      permissions: userPermissions,
     };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -185,6 +329,17 @@ export class AuthService {
       accessToken,
       refreshToken,
       sessionId: session._id,
+      sellingEntityId,
+      entityStatus,
+      user: {
+        id: userIdStr,
+        email: user.email,
+        userName: user.userName,
+        role: user.role,
+        sellingEntityId,
+        entityStatus,
+        permissions: userPermissions,
+      },
     };
   }
 
@@ -236,11 +391,61 @@ export class AuthService {
       { isRevoked: true },
     );
 
-    // Generate new Access and Refresh tokens
+    const userIdStr = user._id.toString();
+    const userPermissionsDoc = await this.permissionRepo.getOne({
+      userId: userIdStr,
+    });
+    const userPermissions: string[] =
+      userPermissionsDoc?.permissions &&
+      userPermissionsDoc.permissions.length > 0
+        ? userPermissionsDoc.permissions
+        : getDefaultPermissionsForRole(user.role);
+
+    let sellingEntityId: string | null = null;
+    let entityStatus: string | null = null;
+
+    const userRoleLower = (user.role || '').toLowerCase();
+    if (
+      userRoleLower === RolesEnum.SELLER.toLowerCase() ||
+      userRoleLower === RolesEnum.COMPANY_ADMIN.toLowerCase() ||
+      userRoleLower === 'seller' ||
+      userRoleLower === 'company_admin'
+    ) {
+      const sellingEntity = await this.sellingEntityRepo.getOne({
+        primaryOwnerId: user._id,
+      });
+
+      if (sellingEntity) {
+        sellingEntityId = sellingEntity._id ? sellingEntity._id.toString() : null;
+        entityStatus = sellingEntity.status || null;
+
+        if (!user.sellingEntityId && sellingEntity._id) {
+          await this.userRepo.updateOne(
+            { _id: user._id },
+            { sellingEntityId: sellingEntity._id },
+          );
+        }
+      } else if (user.sellingEntityId) {
+        const entityById = await this.sellingEntityRepo.getOne({
+          _id: user.sellingEntityId,
+        });
+        if (entityById) {
+          sellingEntityId = entityById._id ? entityById._id.toString() : null;
+          entityStatus = entityById.status || null;
+        }
+      }
+    }
+
+    // Generate new Access and Refresh tokens with updated permissions and claims
     const newPayload = {
-      sub: user._id.toString(),
+      sub: userIdStr,
       email: user.email,
       role: user.role,
+      sellingEntityId:
+        sellingEntityId ||
+        (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
+      entityStatus: entityStatus || undefined,
+      permissions: userPermissions,
     };
 
     const newAccessToken = this.jwtService.sign(newPayload, {
@@ -269,6 +474,17 @@ export class AuthService {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
       sessionId: newSession._id,
+      sellingEntityId,
+      entityStatus,
+      user: {
+        id: userIdStr,
+        email: user.email,
+        userName: user.userName,
+        role: user.role,
+        sellingEntityId,
+        entityStatus,
+        permissions: userPermissions,
+      },
     };
   }
 

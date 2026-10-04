@@ -1,5 +1,11 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsNotEmpty, IsString, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { CheckoutItemDto } from './checkout-item.dto';
 
 export class CheckoutDto {
@@ -15,4 +21,12 @@ export class CheckoutDto {
   @IsString()
   @IsNotEmpty()
   idempotencyKey: string;
+
+  @IsOptional()
+  @IsString()
+  couponCode?: string;
+
+  @IsOptional()
+  @IsString()
+  customerId?: string;
 }

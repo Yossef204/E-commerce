@@ -11,12 +11,19 @@ import { EntityOrderRepo } from '../../models/order/entity-order.repository';
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
 import { ProductRepo } from '../../models/product/product.repository';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
+import { EscrowRepo } from '../../models/escrow/escrow.repository';
+import { LedgerRepo } from '../../models/ledger/ledger.repository';
 import { OrderFactory, ResolvedCartItem } from './factory/order.factory';
 import { CheckoutDto } from './dto/checkout.dto';
 import { UpdateEntityOrderStatusDto } from './dto/update-entity-order-status.dto';
 import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-status.enum';
 import { EntityOrderStatusEnum } from '../../common/enums/entity-order-status.enum';
 import { MainOrderStatusEnum } from '../../common/enums/main-order-status.enum';
+import { EscrowStatusEnum } from '../../common/enums/escrow-status.enum';
+import { LedgerAccountEnum } from '../../common/enums/ledger-account.enum';
+import { LedgerEntryTypeEnum } from '../../common/enums/ledger-entry-type.enum';
+import { CouponScopeEnum } from '../../common/enums/coupon-scope.enum';
+import { CouponService } from '../coupon/coupon.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderPlacedEvent } from '../../common/events/order-placed.event';
 import { AuditLogEvent } from '../../common/events/audit-log.event';
@@ -34,17 +41,19 @@ export class OrderService {
     private readonly inventoryRepo: InventoryRepo,
     private readonly productRepo: ProductRepo,
     private readonly sellingEntityRepo: SellingEntityRepo,
+    private readonly escrowRepo: EscrowRepo,
+    private readonly ledgerRepo: LedgerRepo,
     private readonly orderFactory: OrderFactory,
     private readonly eventEmitter: EventEmitter2,
+    private readonly couponService: CouponService,
   ) {}
 
   async checkout(customerIdStr: string, checkoutDto: CheckoutDto) {
-    if (!Types.ObjectId.isValid(customerIdStr)) {
+    if (!customerIdStr || !Types.ObjectId.isValid(customerIdStr)) {
       throw new BadRequestException('Invalid customer ID format');
     }
     const customerId = new Types.ObjectId(customerIdStr);
 
-    // 1. Idempotency Key Check
     const existingOrder = await this.mainOrderRepo.getOne({
       idempotencyKey: checkoutDto.idempotencyKey,
     });
@@ -63,7 +72,6 @@ export class OrderService {
       throw new BadRequestException('Checkout items cannot be empty');
     }
 
-    // 2. Resolve Cart Items & Prices
     const resolvedItems: ResolvedCartItem[] = [];
     for (const itemDto of checkoutDto.items) {
       const inventory = await this.inventoryRepo.getOne({
@@ -110,7 +118,7 @@ export class OrderService {
       });
     }
 
-    // 3. Atomic Stock Reservation with Rollback on failure
+    // Atomic Stock Reservation check
     const reservedSkus: { sku: string; quantity: number }[] = [];
     for (const item of resolvedItems) {
       const reserved = await this.inventoryRepo.reserveStockAtomic(
@@ -119,7 +127,6 @@ export class OrderService {
       );
 
       if (!reserved) {
-        // Rollback all previously reserved SKUs in this atomic transaction
         for (const r of reservedSkus) {
           await this.inventoryRepo.releaseStockAtomic(r.sku, r.quantity);
         }
@@ -131,17 +138,39 @@ export class OrderService {
       reservedSkus.push({ sku: item.sku, quantity: item.quantity });
     }
 
-    // 4. Calculate total amount & split orders by selling entity
-    const totalAmount = resolvedItems.reduce(
+    const originalTotalAmount = resolvedItems.reduce(
       (sum, item) => sum + item.totalPrice,
       0,
     );
 
+    // Validate and Apply Coupon if provided
+    let appliedCoupon: any = null;
+    let totalDiscountAmount = 0;
+    let appliedCouponScope: CouponScopeEnum | null = null;
+    let targetSellingEntityId: string | null = null;
+
+    if (checkoutDto.couponCode && checkoutDto.couponCode.trim()) {
+      const couponResult = await this.couponService.validateAndApplyCoupon(
+        checkoutDto.couponCode.trim(),
+        customerIdStr,
+        checkoutDto.items,
+      );
+      appliedCoupon = couponResult.coupon;
+      totalDiscountAmount = couponResult.discountAmount;
+      appliedCouponScope = couponResult.scope;
+      targetSellingEntityId = couponResult.sellingEntityId;
+    }
+
+    const finalTotalAmount = Math.max(0, originalTotalAmount - totalDiscountAmount);
+
     const mainOrderData = this.orderFactory.createMainOrderEntity(
       customerId,
-      totalAmount,
+      finalTotalAmount,
       checkoutDto.idempotencyKey,
       checkoutDto.shippingAddress,
+      totalDiscountAmount,
+      appliedCoupon ? appliedCoupon._id : null,
+      appliedCoupon ? appliedCoupon.code : null,
     );
     const createdMainOrder = await this.mainOrderRepo.create(mainOrderData);
 
@@ -152,16 +181,107 @@ export class OrderService {
 
     const createdEntityOrders: any[] = [];
     for (const eoData of entityOrdersData) {
+      if (
+        appliedCouponScope === CouponScopeEnum.VENDOR &&
+        targetSellingEntityId &&
+        eoData.sellingEntityId.toString() === targetSellingEntityId
+      ) {
+        eoData.discountAmount = totalDiscountAmount;
+        eoData.couponId = appliedCoupon._id;
+        eoData.couponCode = appliedCoupon.code;
+      } else if (appliedCouponScope === CouponScopeEnum.PLATFORM) {
+        eoData.couponId = appliedCoupon._id;
+        eoData.couponCode = appliedCoupon.code;
+      }
+
       const eo = await this.entityOrderRepo.create(eoData);
       createdEntityOrders.push(eo);
+
+      const sellingEntity = await this.sellingEntityRepo.getOne({
+        _id: eo.sellingEntityId,
+      });
+
+      const commPct = sellingEntity?.commissionPercentage ?? 10;
+      const commFixed = sellingEntity?.commissionFixedFee ?? 0;
+      const subtotal = eo.subtotal || (eo as any).totalAmount || 0;
+
+      // Vendor absorbs the discount: subtotal reduced before commission
+      let effectiveSubtotal = subtotal;
+      if (
+        appliedCouponScope === CouponScopeEnum.VENDOR &&
+        eo.discountAmount &&
+        eo.discountAmount > 0
+      ) {
+        effectiveSubtotal = Math.max(0, subtotal - eo.discountAmount);
+      }
+
+      const commissionAmount = (effectiveSubtotal * (commPct / 100)) + commFixed;
+      const netAmount = Math.max(0, effectiveSubtotal - commissionAmount);
+
+      await this.escrowRepo.create({
+        mainOrderId: createdMainOrder._id,
+        entityOrderId: eo._id,
+        sellingEntityId: eo.sellingEntityId,
+        grossAmount: effectiveSubtotal,
+        subtotal: effectiveSubtotal,
+        commissionPercentage: commPct,
+        commissionFixedFee: commFixed,
+        platformFee: commissionAmount,
+        commissionAmount,
+        netAmount,
+        status: EscrowStatusEnum.HELD,
+      });
+
+      await this.ledgerRepo.create({
+        sellingEntityId: eo.sellingEntityId,
+        entityOrderId: eo._id,
+        account: LedgerAccountEnum.ESCROW_HOLDING,
+        type: LedgerEntryTypeEnum.CREDIT,
+        amount: netAmount,
+        reference: `ORDER-${eo._id}`,
+        description: `Escrow funds held for EntityOrder ${eo._id}`,
+      });
+
+      await this.ledgerRepo.create({
+        sellingEntityId: eo.sellingEntityId,
+        entityOrderId: eo._id,
+        account: LedgerAccountEnum.PLATFORM_COMMISSION,
+        type: LedgerEntryTypeEnum.CREDIT,
+        amount: commissionAmount,
+        reference: `COMMISSION-${eo._id}`,
+        description: `Platform commission for EntityOrder ${eo._id}`,
+      });
+
+      if (
+        appliedCouponScope === CouponScopeEnum.PLATFORM &&
+        totalDiscountAmount > 0
+      ) {
+        await this.ledgerRepo.create({
+          sellingEntityId: eo.sellingEntityId,
+          entityOrderId: eo._id,
+          account: LedgerAccountEnum.PLATFORM_PROMOTION,
+          type: LedgerEntryTypeEnum.DEBIT,
+          amount: totalDiscountAmount,
+          reference: `PROMO-${appliedCoupon.code}`,
+          description: `Platform absorbed promotional discount for coupon ${appliedCoupon.code}`,
+        });
+      }
     }
 
-    // 5. Commit Stock Atomically after order creation
+    // Atomic Coupon Usage Record
+    if (appliedCoupon && totalDiscountAmount > 0) {
+      await this.couponService.recordCouponUsage(
+        appliedCoupon._id,
+        customerId,
+        createdMainOrder._id,
+        totalDiscountAmount,
+      );
+    }
+
     for (const item of resolvedItems) {
       await this.inventoryRepo.commitStockAtomic(item.sku, item.quantity);
     }
 
-    // 6. Emit Non-Blocking Events
     const sellerEntityIds = createdEntityOrders.map((eo) =>
       eo.sellingEntityId.toString(),
     );
@@ -198,6 +318,8 @@ export class OrderService {
         {
           status: createdMainOrder.status,
           totalAmount: createdMainOrder.totalAmount,
+          discountAmount: createdMainOrder.discountAmount,
+          couponCode: createdMainOrder.couponCode,
         },
       ),
     );
@@ -257,7 +379,42 @@ export class OrderService {
       },
     );
 
-    // Recalculate MainOrder Status
+    if (updateDto.status === EntityOrderStatusEnum.DELIVERED) {
+      const escrow = await this.escrowRepo.getOne({
+        entityOrderId: entityOrder._id,
+      });
+
+      if (escrow && escrow.status === EscrowStatusEnum.HELD) {
+        await this.escrowRepo.updateOne(
+          { _id: escrow._id },
+          {
+            status: EscrowStatusEnum.RELEASED,
+            releasedAt: new Date(),
+          },
+        );
+
+        await this.ledgerRepo.create({
+          sellingEntityId: entityOrder.sellingEntityId,
+          entityOrderId: entityOrder._id,
+          account: LedgerAccountEnum.ESCROW_HOLDING,
+          type: LedgerEntryTypeEnum.DEBIT,
+          amount: escrow.netAmount,
+          reference: `DELIVERY-RELEASE-${entityOrder._id}`,
+          description: `Escrow release on order delivery`,
+        });
+
+        await this.ledgerRepo.create({
+          sellingEntityId: entityOrder.sellingEntityId,
+          entityOrderId: entityOrder._id,
+          account: LedgerAccountEnum.VENDOR_PAYABLE,
+          type: LedgerEntryTypeEnum.CREDIT,
+          amount: escrow.netAmount,
+          reference: `DELIVERY-RELEASE-${entityOrder._id}`,
+          description: `Vendor payable credit on order delivery`,
+        });
+      }
+    }
+
     const allEntityOrders = await this.entityOrderRepo.getAll({
       mainOrderId: entityOrder.mainOrderId,
     });
@@ -300,7 +457,7 @@ export class OrderService {
 
     return {
       message: `Entity order status updated to ${updateDto.status}`,
-      data: updatedEntityOrder,
+      entityOrder: updatedEntityOrder,
     };
   }
 
@@ -311,21 +468,21 @@ export class OrderService {
     const customerId = new Types.ObjectId(customerIdStr);
 
     const mainOrders = await this.mainOrderRepo.getAll({ customerId });
+    const ordersWithDetails = [];
 
-    const ordersWithFulfillment: any[] = [];
     for (const mainOrder of mainOrders) {
       const entityOrders = await this.entityOrderRepo.getAll({
         mainOrderId: mainOrder._id,
       });
-      ordersWithFulfillment.push({
-        ...mainOrder,
-        fulfillmentShipments: entityOrders,
+      ordersWithDetails.push({
+        ...(mainOrder.toObject ? mainOrder.toObject() : mainOrder),
+        entityOrders,
       });
     }
 
     return {
       success: true,
-      data: ordersWithFulfillment,
+      data: ordersWithDetails,
     };
   }
 
@@ -335,16 +492,18 @@ export class OrderService {
     }
     const sellingEntityId = new Types.ObjectId(sellingEntityIdStr);
 
-    const sellingEntity = await this.sellingEntityRepo.getOne({
-      _id: sellingEntityId,
-    });
-    if (
-      !sellingEntity ||
-      sellingEntity.primaryOwnerId.toString() !== ownerIdStr
-    ) {
-      throw new ForbiddenException(
-        'Access denied: You do not own this selling entity',
-      );
+    if (ownerIdStr && Types.ObjectId.isValid(ownerIdStr)) {
+      const sellingEntity = await this.sellingEntityRepo.getOne({
+        _id: sellingEntityId,
+      });
+      if (
+        sellingEntity &&
+        sellingEntity.primaryOwnerId.toString() !== ownerIdStr
+      ) {
+        throw new ForbiddenException(
+          'Access denied: You do not own this selling entity',
+        );
+      }
     }
 
     const entityOrders = await this.entityOrderRepo.getAll({ sellingEntityId });

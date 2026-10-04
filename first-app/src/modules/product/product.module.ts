@@ -7,6 +7,9 @@ import { InventoryMongoModule } from '../../shared/modules/inventory.mongo.modul
 import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mongo.module';
 import { UserMongoModule } from '../../shared/modules/user.mongo.module';
 import { JwtModule } from '@nestjs/jwt';
+import { PermissionsModule } from '../permissions/permissions.module';
+
+import { BrandMongoModule } from '../../shared/modules/brand.mongo.module';
 
 @Module({
   imports: [
@@ -14,6 +17,8 @@ import { JwtModule } from '@nestjs/jwt';
     InventoryMongoModule,
     SellingEntityMongoModule,
     UserMongoModule,
+    BrandMongoModule,
+    PermissionsModule,
     JwtModule,
   ],
   controllers: [ProductController],

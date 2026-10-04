@@ -1,4 +1,4 @@
-export type UserRole = 'CUSTOMER' | 'SELLER' | 'COMPANY_ADMIN' | 'SUPER_ADMIN' | 'user' | 'admin' | 'seller';
+export type UserRole = 'CUSTOMER' | 'SELLER' | 'COMPANY_ADMIN' | 'SUPER_ADMIN' | 'user' | 'admin' | 'seller' | 'company_admin' | 'customer';
 
 export interface User {
   id: string;
@@ -9,6 +9,9 @@ export interface User {
   isEmailVerified?: boolean;
   status?: string;
   profilePic?: string;
+  permissions?: string[];
+  sellingEntityId?: string;
+  entityStatus?: string | null;
 }
 
 export interface AuthState {
@@ -25,6 +28,9 @@ export interface AuthState {
   }) => void;
   updateUser: (user: Partial<User>) => void;
   clearAuth: () => void;
+  logout: () => void;
+  getVerifiedRole: () => UserRole | null;
+  getVerifiedPermissions: () => string[];
 }
 
 export interface LoginRequest {
@@ -41,6 +47,7 @@ export interface LoginResponse {
     accessToken: string;
     refreshToken: string;
     sessionId: string;
+    user?: User;
   };
 }
 
@@ -66,4 +73,3 @@ export interface VerifyOtpResponse {
   success: boolean;
   message: string;
 }
-

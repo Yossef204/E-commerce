@@ -4,22 +4,30 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, Types } from 'mongoose';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
 import { UserRepo } from '../../models/user/user.repository';
 import { ProductRepo } from '../../models/product/product.repository';
 import { EntityOrderRepo } from '../../models/order/entity-order.repository';
 import { EscrowRepo } from '../../models/escrow/escrow.repository';
 import { PayoutRepo } from '../../models/payout/payout.repository';
+import { BrandRepo } from '../../models/brand/brand.repository';
+import { PermissionRepo } from '../../models/permission/permission.repository';
 import { SellingEntityFactory } from './factory/selling-entity.factory';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { CreateIndependentSellerDto } from './dto/create-independent-seller.dto';
 import { UpdateEntityStatusDto } from './dto/update-entity-status.dto';
 import { RolesEnum } from '../../common/enums/roles';
+import { AccountStatusEnum } from '../../common/enums/account-status';
 import { EntityStatusEnum } from '../../common/enums/entity-status.enum';
 import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-status.enum';
 import { EntityOrderStatusEnum } from '../../common/enums/entity-order-status.enum';
 import { EscrowStatusEnum } from '../../common/enums/escrow-status.enum';
+import {
+  DEFAULT_COMPANY_ADMIN_PERMISSIONS,
+  DEFAULT_SELLER_PERMISSIONS,
+} from '../../common/enums/default-role-permissions';
 
 @Injectable()
 export class SellingEntityService {
@@ -31,6 +39,9 @@ export class SellingEntityService {
     private readonly escrowRepo: EscrowRepo,
     private readonly payoutRepo: PayoutRepo,
     private readonly sellingEntityFactory: SellingEntityFactory,
+    private readonly permissionRepo: PermissionRepo,
+    private readonly brandRepo: BrandRepo,
+    @InjectConnection() private readonly connection: Connection,
   ) {}
 
   async registerCompany(
@@ -56,21 +67,59 @@ export class SellingEntityService {
       );
     }
 
-    const entityData = this.sellingEntityFactory.createCompanyEntity(
-      ownerId,
-      createCompanyDto,
-    );
-    const createdEntity = await this.sellingEntityRepo.create(entityData);
+    const session = await this.connection.startSession();
+    try {
+      session.startTransaction();
 
-    await this.userRepo.updateOne(
-      { _id: ownerId },
-      { role: RolesEnum.COMPANY_ADMIN },
-    );
+      const entityData = this.sellingEntityFactory.createCompanyEntity(
+        ownerId,
+        createCompanyDto,
+      );
+      const createdEntity = await this.sellingEntityRepo.create(entityData, { session });
 
-    return {
-      message: 'Company registered successfully. Pending super admin approval.',
-      data: createdEntity,
-    };
+      await this.userRepo.updateOne(
+        { _id: ownerId },
+        {
+          role: RolesEnum.COMPANY_ADMIN,
+          sellingEntityId: createdEntity._id,
+        },
+        { session },
+      );
+
+      const brandSlug =
+        createCompanyDto.legalName
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)+/g, '') || `brand-${Date.now()}`;
+
+      await this.brandRepo.create(
+        {
+          name: createCompanyDto.legalName,
+          slug: brandSlug,
+          sellingEntityId: createdEntity._id,
+          isActive: false,
+        } as any,
+        { session },
+      );
+
+      await this.permissionRepo.upsertUserPermissions(
+        ownerIdStr,
+        DEFAULT_COMPANY_ADMIN_PERMISSIONS,
+      );
+
+      await session.commitTransaction();
+
+      return {
+        message: 'Company registered successfully. Pending super admin approval.',
+        data: createdEntity,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
 
   async registerIndependentSeller(
@@ -104,6 +153,11 @@ export class SellingEntityService {
 
     await this.userRepo.updateOne({ _id: ownerId }, { role: RolesEnum.SELLER });
 
+    await this.permissionRepo.upsertUserPermissions(
+      ownerIdStr,
+      DEFAULT_SELLER_PERMISSIONS,
+    );
+
     return {
       message: 'Independent seller registered successfully.',
       data: createdEntity,
@@ -124,21 +178,74 @@ export class SellingEntityService {
       throw new NotFoundException('Selling entity not found');
     }
 
-    const updatedEntity = await this.sellingEntityRepo.updateOne(
-      { _id: entityId },
-      {
-        status: updateStatusDto.status,
-        rejectionReason:
-          updateStatusDto.status === EntityStatusEnum.REJECTED
-            ? updateStatusDto.rejectionReason || 'No reason specified'
-            : undefined,
-      },
-    );
+    const session = await this.connection.startSession();
+    try {
+      session.startTransaction();
 
-    return {
-      message: `Selling entity status updated to ${updateStatusDto.status}`,
-      data: updatedEntity,
-    };
+      const updatedEntity = await this.sellingEntityRepo.updateOne(
+        { _id: entityId },
+        {
+          status: updateStatusDto.status,
+          rejectionReason:
+            updateStatusDto.status === EntityStatusEnum.REJECTED
+              ? updateStatusDto.rejectionReason || 'No reason specified'
+              : undefined,
+        },
+        { session },
+      );
+
+      const isApprovedOrActive =
+        updateStatusDto.status === EntityStatusEnum.ACTIVE ||
+        updateStatusDto.status === EntityStatusEnum.APPROVED;
+
+      if (isApprovedOrActive) {
+        if (entity.primaryOwnerId) {
+          await this.userRepo.updateOne(
+            { _id: entity.primaryOwnerId },
+            { status: AccountStatusEnum.ACTIVE },
+            { session },
+          );
+        }
+
+        await this.brandRepo.updateMany(
+          { sellingEntityId: entityId },
+          { isActive: true },
+          { session },
+        );
+      } else if (
+        updateStatusDto.status === EntityStatusEnum.REJECTED ||
+        updateStatusDto.status === EntityStatusEnum.DEACTIVATED
+      ) {
+        await this.brandRepo.updateMany(
+          { sellingEntityId: entityId },
+          { isActive: false },
+          { session },
+        );
+      }
+
+      await session.commitTransaction();
+
+      const doc = (updatedEntity as any)?.toObject ? (updatedEntity as any).toObject() : updatedEntity;
+      const normalizedEntity = {
+        ...doc,
+        tradeName: doc?.legalName || doc?.tradeName || 'غير محدد',
+        companyLegalName: doc?.legalName,
+        commercialRegisterNumber: doc?.businessDetails?.commercialRegister || doc?.commercialRegisterNumber,
+        taxCardNumber: doc?.businessDetails?.taxNumber || doc?.taxCardNumber,
+        sellerFullName: doc?.legalName,
+        nationalIdNumber: doc?.businessDetails?.taxNumber || doc?.businessDetails?.commercialRegister,
+      };
+
+      return {
+        message: `Selling entity status updated to ${updateStatusDto.status}`,
+        data: normalizedEntity,
+      };
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
 
   async getProfile(ownerIdStr: string) {
@@ -164,9 +271,22 @@ export class SellingEntityService {
 
   async findAll() {
     const entities = await this.sellingEntityRepo.getAll({});
+    const normalizedEntities = entities.map((entity: any) => {
+      const doc = entity.toObject ? entity.toObject() : entity;
+      return {
+        ...doc,
+        tradeName: doc.legalName || doc.tradeName || 'غير محدد',
+        companyLegalName: doc.legalName,
+        commercialRegisterNumber: doc.businessDetails?.commercialRegister || doc.commercialRegisterNumber,
+        taxCardNumber: doc.businessDetails?.taxNumber || doc.taxCardNumber,
+        sellerFullName: doc.legalName,
+        nationalIdNumber: doc.businessDetails?.taxNumber || doc.businessDetails?.commercialRegister,
+      };
+    });
+
     return {
       success: true,
-      data: entities,
+      data: normalizedEntities,
     };
   }
 

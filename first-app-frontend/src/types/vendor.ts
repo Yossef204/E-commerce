@@ -1,5 +1,5 @@
 export type EntityType = 'INDEPENDENT_SELLER' | 'COMPANY';
-export type EntityStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+export type EntityStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'ACTIVE' | 'REJECTED' | 'DEACTIVATED';
 export type ProductApprovalStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
 export type EntityOrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
 

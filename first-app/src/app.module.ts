@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -16,9 +17,11 @@ import { ProductModule } from './modules/product/product.module';
 import { SellingEntityModule } from './modules/selling-entity/selling-entity.module';
 import { OrderModule } from './modules/order/order.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { CouponModule } from './modules/coupon/coupon.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -54,10 +57,17 @@ import { NotificationModule } from './modules/notification/notification.module';
     SellingEntityModule,
     OrderModule,
     PaymentModule,
+    CouponModule,
     AuditModule,
     NotificationModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: PermissionsGuard,
+    },
+  ],
 })
 export class AppModule {}

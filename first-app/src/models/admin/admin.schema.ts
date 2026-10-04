@@ -1,12 +1,12 @@
-import { Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
-@Schema({ timestamps: true, discriminatorKey: 'role' })
+
+@Schema({ timestamps: true })
 export class Admin {
   _id: Types.ObjectId;
-  userName: string;
-  email: string;
-  password: string;
-  phoneNumber: string;
-  isActive: boolean;
+
+  @Prop({ type: [String], default: [] })
+  permissions: string[];
 }
+
 export const adminSchema = SchemaFactory.createForClass(Admin);

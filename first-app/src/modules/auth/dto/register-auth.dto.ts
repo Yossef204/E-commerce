@@ -10,6 +10,9 @@ import {
   MinLength,
 } from 'class-validator';
 
+import { IsEnum, IsOptional } from 'class-validator';
+import { RolesEnum } from '../../../common/enums/roles';
+
 export class RegisterAuthDto {
   @IsEmail()
   @IsNotEmpty()
@@ -25,4 +28,8 @@ export class RegisterAuthDto {
   @IsNotEmpty()
   @MinLength(3)
   userName: string;
+
+  @IsOptional()
+  @IsEnum(RolesEnum)
+  role?: RolesEnum;
 }

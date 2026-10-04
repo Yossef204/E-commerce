@@ -24,6 +24,11 @@ import { PaymentReceivedEvent } from '../../common/events/payment-received.event
 import { AuditLogEvent } from '../../common/events/audit-log.event';
 import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 import { EscrowReleasedEvent } from '../notification/events/notification.events';
+import { LedgerRepo } from '../../models/ledger/ledger.repository';
+import { UserRepo } from '../../models/user/user.repository';
+import { LedgerAccountEnum } from '../../common/enums/ledger-account.enum';
+import { LedgerEntryTypeEnum } from '../../common/enums/ledger-entry-type.enum';
+import { RequestPayoutDto } from './dto/request-payout.dto';
 
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
@@ -38,6 +43,8 @@ export class PaymentService {
     private readonly entityOrderRepo: EntityOrderRepo,
     private readonly inventoryRepo: InventoryRepo,
     private readonly sellingEntityRepo: SellingEntityRepo,
+    private readonly ledgerRepo: LedgerRepo,
+    private readonly userRepo: UserRepo,
     private readonly paymentFactory: PaymentFactory,
     private readonly eventEmitter: EventEmitter2,
   ) {}
@@ -315,6 +322,81 @@ export class PaymentService {
         totalPayoutBatches: payouts.length,
       },
       payoutHistory: payouts,
+    };
+  }
+
+  public async requestPayout(userIdStr: string, dto: RequestPayoutDto) {
+    const requestedAmount = Number(dto.amount);
+    if (isNaN(requestedAmount) || requestedAmount <= 0) {
+      throw new BadRequestException('Requested payout amount must be positive');
+    }
+
+    let sellingEntityId: Types.ObjectId | null = null;
+    if (dto.sellingEntityId && Types.ObjectId.isValid(dto.sellingEntityId)) {
+      sellingEntityId = new Types.ObjectId(dto.sellingEntityId);
+    } else if (userIdStr && Types.ObjectId.isValid(userIdStr)) {
+      const user = await this.userRepo.getOne({ _id: new Types.ObjectId(userIdStr) });
+      if (user && (user as any).sellingEntityId) {
+        sellingEntityId = new Types.ObjectId((user as any).sellingEntityId);
+      } else {
+        const entity = await this.sellingEntityRepo.getOne({
+          primaryOwnerId: new Types.ObjectId(userIdStr),
+        });
+        if (entity) sellingEntityId = entity._id;
+      }
+    }
+
+    if (!sellingEntityId) {
+      throw new NotFoundException('Selling entity not found for the merchant');
+    }
+
+    // Compute available balance from VENDOR_PAYABLE ledger (CREDIT - DEBIT)
+    const ledgerEntries = await this.ledgerRepo.getAll({
+      sellingEntityId,
+      account: LedgerAccountEnum.VENDOR_PAYABLE,
+    });
+
+    let availableBalance = 0;
+    for (const entry of ledgerEntries) {
+      if (entry.type === LedgerEntryTypeEnum.CREDIT) {
+        availableBalance += entry.amount;
+      } else if (entry.type === LedgerEntryTypeEnum.DEBIT) {
+        availableBalance -= entry.amount;
+      }
+    }
+
+    if (requestedAmount > availableBalance) {
+      throw new BadRequestException(
+        `Requested payout amount (${requestedAmount}) exceeds available balance (${availableBalance.toFixed(2)})`,
+      );
+    }
+
+    const payout = await this.payoutRepo.create({
+      sellingEntityId,
+      requestedById: Types.ObjectId.isValid(userIdStr)
+        ? new Types.ObjectId(userIdStr)
+        : sellingEntityId,
+      amount: requestedAmount,
+      status: PayoutStatusEnum.PENDING,
+      note: dto.note || 'Merchant payout request',
+    } as any);
+
+    // Record DEBIT entry to hold the requested payout amount
+    await this.ledgerRepo.create({
+      sellingEntityId,
+      account: LedgerAccountEnum.VENDOR_PAYABLE,
+      type: LedgerEntryTypeEnum.DEBIT,
+      amount: requestedAmount,
+      reference: `PAYOUT-REQ-${payout._id}`,
+      description: `Pending payout request holding #${payout._id}`,
+    });
+
+    const newAvailableBalance = availableBalance - requestedAmount;
+
+    return {
+      message: 'Payout request submitted successfully',
+      payout,
+      availableBalance: Math.round(newAvailableBalance * 100) / 100,
     };
   }
 }

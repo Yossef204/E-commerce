@@ -14,9 +14,9 @@ export abstract class AbstractRepo<T> {
     this._model = model;
   }
 
-  public async create(data: Partial<T>): Promise<T> {
+  public async create(data: Partial<T>, options?: any): Promise<T> {
     const doc = new this._model(data);
-    return (await doc.save()) as unknown as T;
+    return (await doc.save(options)) as unknown as T;
   }
 
   public async getOne(

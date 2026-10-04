@@ -4,8 +4,10 @@ import {
   IsEnum,
   IsMongoId,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { ProductTypeEnum } from '../../../common/enums/product-type.enum';
@@ -21,8 +23,8 @@ export class CreateProductDto {
   desc?: string;
 
   @IsMongoId()
-  @IsNotEmpty()
-  sellingEntityId: string;
+  @IsOptional()
+  sellingEntityId?: string;
 
   @IsMongoId()
   @IsNotEmpty()
@@ -40,10 +42,21 @@ export class CreateProductDto {
   @IsOptional()
   productType?: ProductTypeEnum;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  price?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  initialStock?: number;
+
   @IsArray()
+  @IsOptional()
   @ValidateNested({ each: true })
   @Type(() => CreateVariantDto)
-  variants: CreateVariantDto[];
+  variants?: CreateVariantDto[];
 
   @IsString()
   @IsOptional()

@@ -2,14 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Types } from 'mongoose';
 import { GenderEnum } from '../../common/enums/gender';
 
-@Schema({ timestamps: true, discriminatorKey: 'role' })
+@Schema({ timestamps: true })
 export class Customer {
   _id: Types.ObjectId;
-  userName: string;
-  email: string;
-  password: string;
-  phoneNumber: string;
-  isActive: boolean;
 
   @Prop({ type: String })
   address: string;
@@ -17,4 +12,5 @@ export class Customer {
   @Prop({ type: Number, enum: GenderEnum, default: GenderEnum.male })
   gender: GenderEnum;
 }
+
 export const customerSchema = SchemaFactory.createForClass(Customer);

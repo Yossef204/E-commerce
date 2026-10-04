@@ -57,6 +57,12 @@ export class SellingEntity {
 
   @Prop({ type: String, default: null })
   rejectionReason?: string;
+
+  @Prop({ type: Number, default: 10, min: 0, max: 100 })
+  commissionPercentage: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  commissionFixedFee: number;
 }
 
 export const SellingEntitySchema = SchemaFactory.createForClass(SellingEntity);

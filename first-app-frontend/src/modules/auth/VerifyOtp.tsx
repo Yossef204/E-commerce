@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { KeyRound, Mail, AlertCircle, CheckCircle2, ArrowRight } from 'lucide-react';
 import apiClient from '../../api/client';
+import { useAuthStore } from '../../store/useAuthStore';
 
 export const VerifyOtp: React.FC = () => {
   const navigate = useNavigate();
@@ -26,12 +27,42 @@ export const VerifyOtp: React.FC = () => {
         otp: otp.trim(),
       });
 
-      const msg = response.data?.message || 'تم تأكيد البريد الإلكتروني بنجاح!';
-      setSuccessMsg(msg);
+      const data = response.data;
+      if (data.accessToken && data.user) {
+        useAuthStore.getState().setAuth({
+          token: data.accessToken,
+          refreshToken: data.refreshToken,
+          sessionId: data.sessionId,
+          user: data.user,
+        });
 
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+        const normalizedRole = (data.user.role || '').toUpperCase();
+        if (normalizedRole === 'CUSTOMER' || normalizedRole === 'USER') {
+          setSuccessMsg('تم تأكيد البريد الإلكتروني بنجاح! جاري توجيهك إلى المتجر...');
+          setTimeout(() => {
+            navigate('/');
+          }, 1200);
+        } else if (
+          normalizedRole === 'SELLER' ||
+          normalizedRole === 'COMPANY_ADMIN'
+        ) {
+          setSuccessMsg('تم تأكيد الحساب بنجاح! جاري توجيهك لاستكمال بيانات الكيان التجاري...');
+          setTimeout(() => {
+            navigate('/vendor/onboarding');
+          }, 1200);
+        } else {
+          setSuccessMsg('تم تأكيد الحساب بنجاح!');
+          setTimeout(() => {
+            navigate('/');
+          }, 1200);
+        }
+      } else {
+        const msg = data?.message || 'تم تأكيد البريد الإلكتروني بنجاح!';
+        setSuccessMsg(msg);
+        setTimeout(() => {
+          navigate('/login');
+        }, 1500);
+      }
     } catch (err: any) {
       const msg =
         err.response?.data?.message ||

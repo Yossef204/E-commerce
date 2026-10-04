@@ -6,13 +6,16 @@ import {
   UsePipes,
   ValidationPipe,
   HttpCode,
+  Req,
   HttpStatus,
 } from '@nestjs/common';
+import { Request } from 'express'; // 👈 استيراد نوع Request للـ TypeScript
 import { AuthService } from './auth.service';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { IS_PUBLIC, isPublic } from '../../common/decorators/public.decorator';
 
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('auth')
@@ -20,7 +23,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  async register(@Body() registerAuthDto: RegisterAuthDto) {
+  async register(@Body() registerAuthDto: RegisterAuthDto){ // 👈 حقن كائن الـ Request هنا) {
     const result = await this.authService.register(registerAuthDto);
     return {
       success: true,
@@ -48,7 +51,7 @@ export class AuthController {
       data: result,
     };
   }
-
+  @isPublic() // 👈 استخدام الـ Decorator لتحديد أن هذا المسار عام
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
   async refreshToken(@Body() refreshTokenDto: RefreshTokenDto) {

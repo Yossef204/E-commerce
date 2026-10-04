@@ -22,6 +22,19 @@ export class MainOrder {
   @Prop({ type: Number, required: true, min: 0 })
   totalAmount: number;
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  discountAmount: number;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Coupon',
+    default: null,
+  })
+  couponId?: Types.ObjectId | null;
+
+  @Prop({ type: String, default: null })
+  couponCode?: string | null;
+
   @Prop({
     type: String,
     enum: Object.values(MainOrderStatusEnum),

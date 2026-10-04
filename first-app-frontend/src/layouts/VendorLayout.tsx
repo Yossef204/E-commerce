@@ -31,6 +31,11 @@ export const VendorLayout: React.FC = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
+    if (!user?.sellingEntityId) {
+      navigate('/vendor/onboarding', { replace: true });
+      return;
+    }
+
     const fetchVendorEntity = async () => {
       if (!user?.id) {
         setLoading(false);
@@ -39,8 +44,16 @@ export const VendorLayout: React.FC = () => {
       try {
         setLoading(true);
         const entityData = await vendorApi.getProfile(user.id);
+        if (!entityData) {
+          navigate('/vendor/onboarding', { replace: true });
+          return;
+        }
         setEntity(entityData);
       } catch (err: any) {
+        if (err.response?.status === 404) {
+          navigate('/vendor/onboarding', { replace: true });
+          return;
+        }
         setError(err.response?.data?.message || 'لم يتم العثور على ملف تجاري مسجل لهذا الحساب');
       } finally {
         setLoading(false);
@@ -48,7 +61,7 @@ export const VendorLayout: React.FC = () => {
     };
 
     fetchVendorEntity();
-  }, [user]);
+  }, [user, navigate]);
 
   const handleLogout = () => {
     clearAuth();
@@ -63,6 +76,10 @@ export const VendorLayout: React.FC = () => {
     { to: '/vendor/orders', label: 'الطلبات الواردة', icon: ShoppingBag, end: false },
     { to: '/vendor/payouts', label: 'المحفظة والمستحقات', icon: Wallet, end: false },
   ];
+
+  if (!user?.sellingEntityId) {
+    return null;
+  }
 
   if (loading) {
     return (

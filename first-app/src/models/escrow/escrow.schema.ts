@@ -7,8 +7,8 @@ export type TEscrow = IEscrowLedger & Document;
 
 @Schema({ timestamps: true })
 export class EscrowLedger {
-  @Prop({ type: Types.ObjectId, ref: 'MainOrder', required: true })
-  mainOrderId: Types.ObjectId;
+  @Prop({ type: Types.ObjectId, ref: 'MainOrder', required: false, default: null })
+  mainOrderId?: Types.ObjectId;
 
   @Prop({
     type: Types.ObjectId,
@@ -24,11 +24,23 @@ export class EscrowLedger {
   @Prop({ required: true, type: Number })
   grossAmount: number;
 
-  @Prop({ required: true, type: Number, default: 0.1 }) // 10% platform commission
-  commissionRate: number;
+  @Prop({ type: Number })
+  subtotal?: number;
+
+  @Prop({ required: false, type: Number, default: 0.1 })
+  commissionRate?: number;
+
+  @Prop({ type: Number, default: 10 })
+  commissionPercentage?: number;
+
+  @Prop({ type: Number, default: 0 })
+  commissionFixedFee?: number;
 
   @Prop({ required: true, type: Number })
   platformFee: number;
+
+  @Prop({ type: Number })
+  commissionAmount?: number;
 
   @Prop({ required: true, type: Number })
   netAmount: number;

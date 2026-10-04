@@ -14,25 +14,6 @@ export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRoleRedirect = (role: UserRole) => {
-    switch (role) {
-      case 'SELLER':
-      case 'COMPANY_ADMIN':
-      case 'seller':
-        navigate('/vendor');
-        break;
-      case 'SUPER_ADMIN':
-      case 'admin':
-        navigate('/admin');
-        break;
-      case 'CUSTOMER':
-      case 'user':
-      default:
-        navigate('/');
-        break;
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -44,15 +25,24 @@ export const Login: React.FC = () => {
         password,
       });
 
-      const { accessToken, refreshToken, sessionId } = response.data.data;
+      const { accessToken, refreshToken, sessionId, user: responseUser } = response.data.data;
       const parsedPayload = parseJwt(accessToken);
 
-      const userRole: UserRole = parsedPayload?.role || 'CUSTOMER';
+      const userRole: UserRole =
+        (parsedPayload?.role as UserRole) || responseUser?.role || 'CUSTOMER';
+      const sellingEntityId =
+        responseUser?.sellingEntityId || parsedPayload?.sellingEntityId || undefined;
+      const entityStatus =
+        responseUser?.entityStatus ?? parsedPayload?.entityStatus ?? null;
+
       const userObj = {
-        id: parsedPayload?.sub || '',
-        email: parsedPayload?.email || email.trim(),
-        userName: email.split('@')[0],
+        id: parsedPayload?.sub || responseUser?.id || '',
+        email: parsedPayload?.email || responseUser?.email || email.trim(),
+        userName: responseUser?.userName || email.split('@')[0],
         role: userRole,
+        permissions: parsedPayload?.permissions || responseUser?.permissions || [],
+        sellingEntityId,
+        entityStatus,
       };
 
       setAuth({
@@ -62,7 +52,27 @@ export const Login: React.FC = () => {
         user: userObj,
       });
 
-      handleRoleRedirect(userRole);
+      const normalizedRole = (userRole || '').toLowerCase();
+      if (normalizedRole === 'customer' || normalizedRole === 'user') {
+        navigate('/');
+      } else if (
+        normalizedRole === 'seller' ||
+        normalizedRole === 'company_admin'
+      ) {
+        if (!sellingEntityId) {
+          navigate('/vendor/onboarding');
+        } else if (entityStatus === 'PENDING_APPROVAL') {
+          navigate('/vendor/pending-approval');
+        } else if (entityStatus === 'ACTIVE' || entityStatus === 'APPROVED') {
+          navigate('/vendor/dashboard');
+        } else {
+          navigate('/vendor/onboarding');
+        }
+      } else if (normalizedRole === 'super_admin' || normalizedRole === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       const msg =
         err.response?.data?.message ||

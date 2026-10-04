@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { UserPlus, Mail, Lock, User as UserIcon, Phone, AlertCircle, ArrowRight, Store, ShoppingBag } from 'lucide-react';
+import { 
+  UserPlus, 
+  Mail, 
+  Lock, 
+  User as UserIcon, 
+  Phone, 
+  AlertCircle, 
+  ArrowRight, 
+  Store, 
+  ShoppingBag, 
+  Building2 
+} from 'lucide-react';
 import apiClient from '../../api/client';
 
 export const Register: React.FC = () => {
@@ -10,14 +21,13 @@ export const Register: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [accountType, setAccountType] = useState<'CUSTOMER' | 'SELLER'>('CUSTOMER');
+  // مطابقة لقيم RolesEnum في الباك إند
+  const [accountType, setAccountType] = useState<'customer' | 'seller' | 'company_admin'>('customer');
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // دالة فحص كلمة المرور المطابقة لسلوك validator.js / IsStrongPassword في NestJS
   const isStrongPassword = (pass: string): boolean => {
-    // تشترط: حرف صغير، حرف كبير، رقم، وأي رمز غير الحروف والأرقام (مثل @, #, $, _, !, %, -, إلخ)، بطول 8 أحرف فأكثر
     const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9\s]).{8,}$/;
     return strongPasswordRegex.test(pass);
   };
@@ -26,7 +36,6 @@ export const Register: React.FC = () => {
     e.preventDefault();
     setError(null);
 
-    // التحقق من قوة كلمة المرور قبل إرسال الطلب
     if (!isStrongPassword(password)) {
       setError('كلمة المرور يجب أن تكون 8 أحرف على الأقل، وتحتوي على حرف كبير (A-Z)، وحرف صغير (a-z)، ورقم (0-9)، ورمز خاص (مثل: @, #, $, _, !).');
       return;
@@ -35,7 +44,6 @@ export const Register: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Backend validates phoneNumber as Egyptian number e.g. +2010... or 010...
       let formattedPhone = phoneNumber.trim();
       if (!formattedPhone.startsWith('+')) {
         if (formattedPhone.startsWith('0')) {
@@ -52,7 +60,7 @@ export const Register: React.FC = () => {
         email: email.trim(),
         password,
         phoneNumber: formattedPhone,
-        role: accountType,
+        role: accountType, // يرسل 'customer' أو 'seller' أو 'company_admin'
       });
 
       if (response.data?.success || response.status === 201 || response.status === 200) {
@@ -69,7 +77,7 @@ export const Register: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+      <div className="max-w-xl w-full bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white text-center">
           <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-inner">
@@ -91,32 +99,50 @@ export const Register: React.FC = () => {
           {/* Account Type Selector */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">نوع الحساب</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              
+              {/* 1. مشتري */}
               <button
                 type="button"
-                onClick={() => setAccountType('CUSTOMER')}
-                className={`p-3.5 rounded-xl border flex items-center justify-center gap-2 text-sm font-semibold transition-all ${
-                  accountType === 'CUSTOMER'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm'
+                onClick={() => setAccountType('customer')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all ${
+                  accountType === 'customer'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm ring-1 ring-blue-500'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <ShoppingBag className="w-4 h-4" />
-                <span>مشتري (مستهلك)</span>
+                <ShoppingBag className="w-5 h-5 text-blue-600" />
+                <span className="text-xs font-bold">مشتري (مستهلك)</span>
               </button>
 
+              {/* 2. تاجر مستقل */}
               <button
                 type="button"
-                onClick={() => setAccountType('SELLER')}
-                className={`p-3.5 rounded-xl border flex items-center justify-center gap-2 text-sm font-semibold transition-all ${
-                  accountType === 'SELLER'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm'
+                onClick={() => setAccountType('seller')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all ${
+                  accountType === 'seller'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm ring-1 ring-blue-500'
                     : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                <Store className="w-4 h-4" />
-                <span>بائع / تاجر</span>
+                <Store className="w-5 h-5 text-indigo-600" />
+                <span className="text-xs font-bold">تاجر مستقل (فرد)</span>
               </button>
+
+              {/* 3. شركة / علامة تجارية */}
+              <button
+                type="button"
+                onClick={() => setAccountType('company_admin')}
+                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all ${
+                  accountType === 'company_admin'
+                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm ring-1 ring-blue-500'
+                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <Building2 className="w-5 h-5 text-purple-600" />
+                <span className="text-xs font-bold">شركة / براند</span>
+              </button>
+
             </div>
           </div>
 

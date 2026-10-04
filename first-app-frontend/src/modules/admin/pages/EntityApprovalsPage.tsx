@@ -30,6 +30,7 @@ export const EntityApprovalsPage: React.FC = () => {
   const { data: entities = [], isLoading } = useQuery<SellingEntityAdmin[]>({
     queryKey: ['sellingEntities'],
     queryFn: () => adminApi.getSellingEntities(),
+    refetchInterval: 10000,
   });
 
   const updateStatusMutation = useMutation({

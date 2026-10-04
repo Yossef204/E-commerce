@@ -1,11 +1,17 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Types } from 'mongoose';
-@Schema({ timestamps: true, discriminatorKey: 'role' })
+import mongoose, { Types } from 'mongoose';
+
+@Schema({ timestamps: true })
 export class Seller {
   _id: Types.ObjectId;
-  userName: string;
-  email: string;
-  password: string;
-  phoneNumber: string;
+
+  @Prop({
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SellingEntity',
+    default: null,
+    index: true,
+  })
+  sellingEntityId?: Types.ObjectId;
 }
+
 export const sellerSchema = SchemaFactory.createForClass(Seller);

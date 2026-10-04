@@ -8,16 +8,20 @@ import { ProductMongoModule } from '../../shared/modules/product.mongo.module';
 import { OrderMongoModule } from '../../shared/modules/order.mongo.module';
 import { EscrowMongoModule } from '../../shared/modules/escrow.mongo.module';
 import { PayoutMongoModule } from '../../shared/modules/payout.mongo.module';
+import { BrandMongoModule } from '../../shared/modules/brand.mongo.module';
 import { JwtModule } from '@nestjs/jwt';
+import { PermissionsModule } from '../permissions/permissions.module';
 
 @Module({
   imports: [
     SellingEntityMongoModule,
     UserMongoModule,
+    BrandMongoModule,
     ProductMongoModule,
     OrderMongoModule,
     EscrowMongoModule,
     PayoutMongoModule,
+    PermissionsModule,
     JwtModule,
   ],
   controllers: [SellingEntityController],

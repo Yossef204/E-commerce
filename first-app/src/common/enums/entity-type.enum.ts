@@ -1,4 +1,5 @@
 export enum EntityTypeEnum {
   COMPANY = 'COMPANY',
   INDEPENDENT_SELLER = 'INDEPENDENT_SELLER',
+  BRAND = 'BRAND',
 }

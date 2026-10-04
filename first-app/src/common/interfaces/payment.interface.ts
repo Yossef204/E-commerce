@@ -20,12 +20,16 @@ export interface IPayment {
 
 export interface IEscrowLedger {
   _id?: Types.ObjectId;
-  mainOrderId: Types.ObjectId;
+  mainOrderId?: Types.ObjectId;
   entityOrderId: Types.ObjectId;
   sellingEntityId: Types.ObjectId;
   grossAmount: number;
-  commissionRate: number;
+  subtotal?: number;
+  commissionRate?: number;
+  commissionPercentage?: number;
+  commissionFixedFee?: number;
   platformFee: number;
+  commissionAmount?: number;
   netAmount: number;
   status: EscrowStatusEnum;
   releasedAt?: Date;

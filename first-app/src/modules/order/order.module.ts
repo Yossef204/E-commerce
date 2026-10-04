@@ -7,7 +7,11 @@ import { InventoryMongoModule } from '../../shared/modules/inventory.mongo.modul
 import { ProductMongoModule } from '../../shared/modules/product.mongo.module';
 import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mongo.module';
 import { UserMongoModule } from '../../shared/modules/user.mongo.module';
+import { EscrowMongoModule } from '../../shared/modules/escrow.mongo.module';
+import { LedgerMongoModule } from '../../shared/modules/ledger.mongo.module';
 import { JwtModule } from '@nestjs/jwt';
+import { PermissionsModule } from '../permissions/permissions.module';
+import { CouponModule } from '../coupon/coupon.module';
 
 @Module({
   imports: [
@@ -16,7 +20,11 @@ import { JwtModule } from '@nestjs/jwt';
     ProductMongoModule,
     SellingEntityMongoModule,
     UserMongoModule,
+    EscrowMongoModule,
+    LedgerMongoModule,
+    PermissionsModule,
     JwtModule,
+    CouponModule,
   ],
   controllers: [OrderController],
   providers: [OrderService, OrderFactory],

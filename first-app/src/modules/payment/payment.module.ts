@@ -3,6 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PaymentMongoModule } from '../../shared/modules/payment.mongo.module';
 import { EscrowMongoModule } from '../../shared/modules/escrow.mongo.module';
 import { PayoutMongoModule } from '../../shared/modules/payout.mongo.module';
+import { LedgerMongoModule } from '../../shared/modules/ledger.mongo.module';
 import { OrderMongoModule } from '../../shared/modules/order.mongo.module';
 import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mongo.module';
 import { UserMongoModule } from '../../shared/modules/user.mongo.module';
@@ -16,6 +17,7 @@ import { PaymentFactory } from './factory/payment.factory';
     PaymentMongoModule,
     EscrowMongoModule,
     PayoutMongoModule,
+    LedgerMongoModule,
     OrderMongoModule,
     SellingEntityMongoModule,
     UserMongoModule,

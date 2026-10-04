@@ -9,9 +9,12 @@ import { Types } from 'mongoose';
 import { ProductRepo } from '../../models/product/product.repository';
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
+import { UserRepo } from '../../models/user/user.repository';
+import { BrandRepo } from '../../models/brand/brand.repository';
 import { ProductFactory } from './factory/product.factory';
 import { CreateProductDto } from './dto/create-product.dto';
-import { UpdateProductApprovalDto } from './dto/update-product-approval.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { UpdateApprovalDto } from './dto/update-approval.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-status.enum';
 import { EntityStatusEnum } from '../../common/enums/entity-status.enum';
@@ -22,16 +25,33 @@ export class ProductService {
     private readonly productRepo: ProductRepo,
     private readonly inventoryRepo: InventoryRepo,
     private readonly sellingEntityRepo: SellingEntityRepo,
+    private readonly userRepo: UserRepo,
+    private readonly brandRepo: BrandRepo,
     private readonly productFactory: ProductFactory,
   ) {}
 
-  async createProduct(ownerIdStr: string, createProductDto: CreateProductDto) {
-    if (!Types.ObjectId.isValid(createProductDto.sellingEntityId)) {
-      throw new BadRequestException('Invalid selling entity ID format');
+  async createProduct(userContext: any, createProductDto: CreateProductDto) {
+    const userId =
+      typeof userContext === 'string'
+        ? userContext
+        : userContext?.sub || userContext?.id;
+    let entityIdStr =
+      typeof userContext === 'object' ? userContext?.sellingEntityId : null;
+
+    if (!entityIdStr && userId && Types.ObjectId.isValid(userId)) {
+      const userDoc = await this.userRepo.getOne({
+        _id: new Types.ObjectId(userId),
+      });
+      entityIdStr = (userDoc as any)?.sellingEntityId?.toString();
     }
-    const sellingEntityId = new Types.ObjectId(
-      createProductDto.sellingEntityId,
-    );
+
+    if (!entityIdStr) {
+      throw new ForbiddenException(
+        'User does not belong to an active selling entity',
+      );
+    }
+
+    const sellingEntityId = new Types.ObjectId(entityIdStr);
 
     const sellingEntity = await this.sellingEntityRepo.getOne({
       _id: sellingEntityId,
@@ -40,17 +60,54 @@ export class ProductService {
       throw new NotFoundException('Selling entity not found');
     }
 
-    if (sellingEntity.status !== EntityStatusEnum.APPROVED) {
+    if (
+      sellingEntity.status !== EntityStatusEnum.APPROVED &&
+      sellingEntity.status !== EntityStatusEnum.ACTIVE
+    ) {
       throw new ForbiddenException(
-        'Selling entity must be APPROVED to register products',
+        'Selling entity must be APPROVED or ACTIVE to register products',
       );
     }
 
-    if (sellingEntity.primaryOwnerId.toString() !== ownerIdStr) {
-      throw new ForbiddenException('You do not own this selling entity');
+    if (createProductDto.brandId) {
+      if (!Types.ObjectId.isValid(createProductDto.brandId)) {
+        throw new BadRequestException('Invalid brand ID format');
+      }
+
+      const brand = await this.brandRepo.getOne({
+        _id: new Types.ObjectId(createProductDto.brandId),
+      });
+
+      if (!brand || !brand.isActive) {
+        throw new BadRequestException(
+          'Specified brand is not active or found',
+        );
+      }
+
+      if (
+        brand.sellingEntityId &&
+        brand.sellingEntityId.toString() !== entityIdStr
+      ) {
+        throw new ForbiddenException(
+          'Specified brand does not belong to your selling entity',
+        );
+      }
     }
 
-    // Check SKU uniqueness
+    createProductDto.sellingEntityId = entityIdStr;
+
+    if (!createProductDto.variants || createProductDto.variants.length === 0) {
+      const defaultSku = `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+      createProductDto.variants = [
+        {
+          sku: defaultSku,
+          price: createProductDto.price || 100,
+          attributes: { default: 'standard' },
+          initialStock: createProductDto.initialStock || 10,
+        },
+      ];
+    }
+
     for (const vDto of createProductDto.variants) {
       const existingSku = await this.inventoryRepo.getOne({
         sku: vDto.sku.trim(),
@@ -62,50 +119,63 @@ export class ProductService {
 
     const productEntity =
       this.productFactory.createProductEntity(createProductDto);
+
+    productEntity.approvalStatus = ProductApprovalStatusEnum.PENDING_APPROVAL;
+
     const createdProduct = await this.productRepo.create(productEntity);
 
-    // Initialize inventory records for each variant
-    for (let i = 0; i < createdProduct.variants.length; i++) {
-      const variant = createdProduct.variants[i];
-      const initialStock = createProductDto.variants[i].initialStock || 0;
+    for (const variant of createdProduct.variants) {
+      const vDto = createProductDto.variants.find(
+        (v) => v.sku.trim() === variant.sku,
+      );
+      const stock = vDto?.initialStock ?? 10;
 
       await this.inventoryRepo.create({
-        sku: variant.sku,
-        variantId: variant._id.toString(),
         productId: createdProduct._id,
-        availableStock: initialStock,
+        sku: variant.sku,
+        availableStock: stock,
         reservedStock: 0,
       });
     }
 
     return {
-      message: 'Product created successfully. Pending admin approval.',
+      message: 'Product created successfully and submitted for approval',
       data: createdProduct,
     };
   }
 
   async updateApprovalStatus(
     productIdStr: string,
-    updateApprovalDto: UpdateProductApprovalDto,
+    updateApprovalDto: UpdateApprovalDto,
   ) {
     if (!Types.ObjectId.isValid(productIdStr)) {
       throw new BadRequestException('Invalid product ID format');
     }
-    const productId = new Types.ObjectId(productIdStr);
 
-    const product = await this.productRepo.getOne({ _id: productId });
+    const product = await this.productRepo.getOne({
+      _id: new Types.ObjectId(productIdStr),
+    });
     if (!product) {
       throw new NotFoundException('Product not found');
     }
 
+    if (
+      updateApprovalDto.approvalStatus === ProductApprovalStatusEnum.REJECTED &&
+      (!updateApprovalDto.rejectionReason ||
+        !updateApprovalDto.rejectionReason.trim())
+    ) {
+      throw new BadRequestException(
+        'Rejection reason is mandatory when rejecting a product',
+      );
+    }
+
     const updatedProduct = await this.productRepo.updateOne(
-      { _id: productId },
+      { _id: product._id },
       {
         approvalStatus: updateApprovalDto.approvalStatus,
         rejectionReason:
-          updateApprovalDto.approvalStatus ===
-          ProductApprovalStatusEnum.REJECTED
-            ? updateApprovalDto.rejectionReason || 'No reason provided'
+          updateApprovalDto.approvalStatus === ProductApprovalStatusEnum.REJECTED
+            ? updateApprovalDto.rejectionReason.trim()
             : null,
       },
     );
@@ -116,20 +186,58 @@ export class ProductService {
     };
   }
 
-  async findApprovedProducts(categoryIdStr?: string) {
+  async findPublicProducts(query: any = {}) {
+    const { categoryId, brandId, search, page = 1, limit = 10 } = query;
+
     const filter: any = {
       approvalStatus: ProductApprovalStatusEnum.APPROVED,
     };
 
-    if (categoryIdStr && Types.ObjectId.isValid(categoryIdStr)) {
-      filter.categoryId = new Types.ObjectId(categoryIdStr);
+    if (categoryId && Types.ObjectId.isValid(categoryId)) {
+      filter.categoryId = new Types.ObjectId(categoryId);
     }
 
-    const products = await this.productRepo.getAll(filter);
+    if (brandId && Types.ObjectId.isValid(brandId)) {
+      filter.brandId = new Types.ObjectId(brandId);
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      filter.$or = [
+        { title: { $regex: search.trim(), $options: 'i' } },
+        { slug: { $regex: search.trim(), $options: 'i' } },
+      ];
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const limitNum = Math.max(1, Math.min(100, Number(limit) || 10));
+
+    const products = await this.productRepo.getAll(filter, undefined, {
+      skip: (pageNum - 1) * limitNum,
+      limit: limitNum,
+      sort: { createdAt: -1 },
+    });
+
+    const formattedProducts = products.map((product: any) => {
+      const doc = product.toObject ? product.toObject() : product;
+      const activeVariants = (doc.variants || []).filter(
+        (v: any) => v.isActive !== false,
+      );
+      return {
+        ...doc,
+        variants: activeVariants,
+      };
+    });
+
     return {
       success: true,
-      data: products,
+      page: pageNum,
+      limit: limitNum,
+      data: formattedProducts,
     };
+  }
+
+  async findApprovedProducts(categoryIdStr?: string) {
+    return this.findPublicProducts({ categoryId: categoryIdStr });
   }
 
   async findEntityProducts(sellingEntityIdStr: string) {
@@ -191,16 +299,41 @@ export class ProductService {
     };
   }
 
-  async reserveStockAtomic(sku: string, quantity: number) {
-    const success = await this.inventoryRepo.reserveStockAtomic(sku, quantity);
-    if (!success) {
-      throw new BadRequestException(
-        `Insufficient available stock for SKU "${sku}"`,
-      );
+  async reserveStock(
+    items: Array<{ productId?: string; variantSku?: string; sku?: string; quantity: number }>,
+  ) {
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      throw new BadRequestException('Reservation items array must be provided');
     }
+
+    const reservedItems: Array<{ sku: string; quantity: number }> = [];
+
+    for (const item of items) {
+      const sku = (item.variantSku || item.sku || '').trim();
+      const quantity = Number(item.quantity);
+
+      if (!sku || isNaN(quantity) || quantity <= 0) {
+        throw new BadRequestException(`Invalid SKU or quantity for item`);
+      }
+
+      const success = await this.inventoryRepo.reserveStockAtomic(sku, quantity);
+      if (!success) {
+        for (const prev of reservedItems) {
+          await this.inventoryRepo.releaseStockAtomic(prev.sku, prev.quantity);
+        }
+        throw new ConflictException(`Insufficient stock for SKU: ${sku}`);
+      }
+
+      reservedItems.push({ sku, quantity });
+    }
+
     return {
       success: true,
-      message: `Successfully reserved ${quantity} units of SKU "${sku}"`,
+      message: `Stock reserved successfully for ${reservedItems.length} item(s)`,
     };
+  }
+
+  async reserveStockAtomic(sku: string, quantity: number) {
+    return this.reserveStock([{ sku, quantity }]);
   }
 }
