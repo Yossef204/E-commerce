@@ -7,6 +7,7 @@ import configuration from './config/configuration';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { AuthModule } from './modules/auth/auth.module';
+import { UserModule } from './modules/user/user.module';
 import { BrandModule } from './modules/brand/brand.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { CacheConfigService } from './shared/cache/cache.config.service';
@@ -17,10 +18,20 @@ import { ProductModule } from './modules/product/product.module';
 import { SellingEntityModule } from './modules/selling-entity/selling-entity.module';
 import { OrderModule } from './modules/order/order.module';
 import { PaymentModule } from './modules/payment/payment.module';
+import { SharedPaymentModule } from './shared/payment/shared-payment.module';
 import { CouponModule } from './modules/coupon/coupon.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { SellerPayoutModule } from './modules/seller-payout/seller-payout.module';
+import { ReturnModule } from './modules/return/return.module';
+import { ReviewModule } from './modules/review/review.module';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { join } from 'path';
+import { StorefrontModule } from './modules/storefront/storefront.module';
+import { DataloaderModule } from './modules/storefront/dataloader/dataloader.module';
+import { DataloaderService } from './modules/storefront/dataloader/dataloader.service';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
@@ -48,7 +59,23 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
         },
       }),
     }),
+    GraphQLModule.forRootAsync<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      imports: [DataloaderModule],
+      inject: [DataloaderService],
+      useFactory: (dataloaderService: DataloaderService) => ({
+        autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+        playground: true,
+        sortSchema: true,
+        context: ({ req, res }: any) => ({
+          req,
+          res,
+          loaders: dataloaderService.createLoaders(),
+        }),
+      }),
+    }),
     AuthModule,
+    UserModule,
     BrandModule,
     PermissionsModule,
     FileUploadsModule,
@@ -57,9 +84,14 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     SellingEntityModule,
     OrderModule,
     PaymentModule,
+    SharedPaymentModule,
     CouponModule,
     AuditModule,
     NotificationModule,
+    StorefrontModule,
+    SellerPayoutModule,
+    ReturnModule,
+    ReviewModule,
   ],
   controllers: [AppController],
   providers: [

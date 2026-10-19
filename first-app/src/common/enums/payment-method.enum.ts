@@ -1,6 +1,10 @@
 export enum PaymentMethodEnum {
-  CREDIT_CARD = 'CREDIT_CARD',
-  DEBIT_CARD = 'DEBIT_CARD',
+  CARD = 'CARD',
   WALLET = 'WALLET',
-  CASH_ON_DELIVERY = 'CASH_ON_DELIVERY',
+  INSTAPAY = 'INSTAPAY',
+  COD = 'COD',
+  // Backward compatibility aliases
+  CREDIT_CARD = 'CARD',
+  DEBIT_CARD = 'CARD',
+  CASH_ON_DELIVERY = 'COD',
 }

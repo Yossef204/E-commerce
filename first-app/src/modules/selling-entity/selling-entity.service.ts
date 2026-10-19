@@ -28,6 +28,7 @@ import {
   DEFAULT_COMPANY_ADMIN_PERMISSIONS,
   DEFAULT_SELLER_PERMISSIONS,
 } from '../../common/enums/default-role-permissions';
+import { runSafeTransaction } from '../../common/utils/transaction.util';
 
 @Injectable()
 export class SellingEntityService {
@@ -67,15 +68,13 @@ export class SellingEntityService {
       );
     }
 
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-
+    return await runSafeTransaction(this.connection, async (session) => {
+      const options = session ? { session } : undefined;
       const entityData = this.sellingEntityFactory.createCompanyEntity(
         ownerId,
         createCompanyDto,
       );
-      const createdEntity = await this.sellingEntityRepo.create(entityData, { session });
+      const createdEntity = await this.sellingEntityRepo.create(entityData, options);
 
       await this.userRepo.updateOne(
         { _id: ownerId },
@@ -83,7 +82,7 @@ export class SellingEntityService {
           role: RolesEnum.COMPANY_ADMIN,
           sellingEntityId: createdEntity._id,
         },
-        { session },
+        options,
       );
 
       const brandSlug =
@@ -100,7 +99,7 @@ export class SellingEntityService {
           sellingEntityId: createdEntity._id,
           isActive: false,
         } as any,
-        { session },
+        options,
       );
 
       await this.permissionRepo.upsertUserPermissions(
@@ -108,18 +107,11 @@ export class SellingEntityService {
         DEFAULT_COMPANY_ADMIN_PERMISSIONS,
       );
 
-      await session.commitTransaction();
-
       return {
         message: 'Company registered successfully. Pending super admin approval.',
         data: createdEntity,
       };
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
-    }
+    });
   }
 
   async registerIndependentSeller(
@@ -178,10 +170,8 @@ export class SellingEntityService {
       throw new NotFoundException('Selling entity not found');
     }
 
-    const session = await this.connection.startSession();
-    try {
-      session.startTransaction();
-
+    return await runSafeTransaction(this.connection, async (session) => {
+      const options = session ? { session } : undefined;
       const updatedEntity = await this.sellingEntityRepo.updateOne(
         { _id: entityId },
         {
@@ -191,7 +181,7 @@ export class SellingEntityService {
               ? updateStatusDto.rejectionReason || 'No reason specified'
               : undefined,
         },
-        { session },
+        options,
       );
 
       const isApprovedOrActive =
@@ -203,14 +193,14 @@ export class SellingEntityService {
           await this.userRepo.updateOne(
             { _id: entity.primaryOwnerId },
             { status: AccountStatusEnum.ACTIVE },
-            { session },
+            options,
           );
         }
 
         await this.brandRepo.updateMany(
           { sellingEntityId: entityId },
           { isActive: true },
-          { session },
+          options,
         );
       } else if (
         updateStatusDto.status === EntityStatusEnum.REJECTED ||
@@ -219,11 +209,9 @@ export class SellingEntityService {
         await this.brandRepo.updateMany(
           { sellingEntityId: entityId },
           { isActive: false },
-          { session },
+          options,
         );
       }
-
-      await session.commitTransaction();
 
       const doc = (updatedEntity as any)?.toObject ? (updatedEntity as any).toObject() : updatedEntity;
       const normalizedEntity = {
@@ -240,12 +228,7 @@ export class SellingEntityService {
         message: `Selling entity status updated to ${updateStatusDto.status}`,
         data: normalizedEntity,
       };
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
-    }
+    });
   }
 
   async getProfile(ownerIdStr: string) {
@@ -263,9 +246,40 @@ export class SellingEntityService {
       );
     }
 
+    let brand = await this.brandRepo.getOne({
+      sellingEntityId: entity._id,
+    });
+
+    if (!brand) {
+      const brandName = entity.legalName || 'Default Brand';
+      const brandSlug =
+        brandName
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/(^-|-$)+/g, '') || `brand-${Date.now()}`;
+      try {
+        brand = await this.brandRepo.create({
+          name: brandName,
+          slug: `${brandSlug}-${entity._id}`,
+          sellingEntityId: entity._id,
+          isActive: entity.status === EntityStatusEnum.ACTIVE || entity.status === EntityStatusEnum.APPROVED,
+        } as any);
+      } catch (e) {
+        brand = await this.brandRepo.getOne({
+          sellingEntityId: entity._id,
+        });
+      }
+    }
+
+    const entityDoc = (entity as any)?.toObject ? (entity as any).toObject() : entity;
+
     return {
       success: true,
-      data: entity,
+      data: {
+        ...entityDoc,
+        brand,
+      },
     };
   }
 

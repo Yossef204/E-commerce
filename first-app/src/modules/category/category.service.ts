@@ -1,38 +1,57 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { Category } from './entities/category.entity';
 import { CategoryRepo } from '../../models/category/category.repository';
+import slugify from 'slugify';
 
 @Injectable()
 export class CategoryService {
   constructor(private readonly categoryRepo: CategoryRepo) {}
+
   async create(category: Category) {
-    //check category existence
+    // check category existence
     const categoryExist = await this.categoryRepo.getOne({
       name: category.name,
     });
 
-    //if yes throw conflict
     if (categoryExist) {
       throw new ConflictException('Category Already Exists');
     }
-    //create category
     return await this.categoryRepo.create(category);
   }
 
-  findAll() {
-    return `This action returns all category`;
+  async findAll() {
+    return await this.categoryRepo.getAll({});
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} category`;
+  async findOne(id: string) {
+    const category = await this.categoryRepo.getOne({ _id: id as any });
+    if (!category) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+    return category;
   }
 
-  update(id: number, updateCategoryDto: UpdateCategoryDto) {
-    return `This action updates a #${id} category`;
+  async update(id: string, updateCategoryDto: UpdateCategoryDto) {
+    const updateData: any = { ...updateCategoryDto };
+    if (updateCategoryDto.name) {
+      updateData.name = updateCategoryDto.name.trim();
+      updateData.slug = slugify(updateData.name, { lower: true, strict: true });
+    }
+
+    const updated = await this.categoryRepo.updateOne({ _id: id as any }, updateData);
+    if (!updated) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+    return updated;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} category`;
+  async remove(id: string) {
+    const deleted = await this.categoryRepo.deleteOne({ _id: id as any });
+    if (!deleted) {
+      throw new NotFoundException(`Category with ID ${id} not found`);
+    }
+    return { success: true, message: 'Category removed successfully', data: deleted };
   }
 }
+

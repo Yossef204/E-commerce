@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { AbstractRepo } from '../abstract.repository';
 import { Inventory, TInventory } from './inventory.schema';
 
@@ -8,6 +8,31 @@ import { Inventory, TInventory } from './inventory.schema';
 export class InventoryRepo extends AbstractRepo<TInventory> {
   constructor(@InjectModel(Inventory.name) inventoryModel: Model<TInventory>) {
     super(inventoryModel);
+  }
+
+  public get model(): Model<TInventory> {
+    return this._model;
+  }
+
+  /**
+   * Atomic restocking when an item is returned or restocked
+   */
+  public async restockAtomic(
+    sku: string,
+    quantity: number,
+    options?: any,
+  ): Promise<void> {
+    await this._model
+      .updateOne(
+        { sku },
+        {
+          $inc: {
+            availableStock: quantity,
+          },
+        },
+        options,
+      )
+      .exec();
   }
 
   /**
@@ -67,5 +92,18 @@ export class InventoryRepo extends AbstractRepo<TInventory> {
         },
       )
       .exec();
+  }
+
+  /**
+   * Batch fetch inventories by product IDs for DataLoaders
+   */
+  public async findByProductIds(
+    productIds: (string | Types.ObjectId)[],
+  ): Promise<TInventory[]> {
+    const validIds = productIds
+      .filter((id) => Boolean(id) && Types.ObjectId.isValid(id.toString()))
+      .map((id) => new Types.ObjectId(id.toString()));
+    if (validIds.length === 0) return [];
+    return this._model.find({ productId: { $in: validIds } }).exec();
   }
 }

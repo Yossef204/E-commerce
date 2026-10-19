@@ -10,6 +10,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PermissionsModule } from '../permissions/permissions.module';
 
 import { BrandMongoModule } from '../../shared/modules/brand.mongo.module';
+import { CategoryMongoModule } from '../../shared/modules/category.mongo.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { BrandMongoModule } from '../../shared/modules/brand.mongo.module';
     SellingEntityMongoModule,
     UserMongoModule,
     BrandMongoModule,
+    CategoryMongoModule,
     PermissionsModule,
     JwtModule,
   ],

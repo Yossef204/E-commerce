@@ -4,6 +4,7 @@ import {
   ProjectionType,
   QueryOptions,
   UpdateQuery,
+  Types,
 } from 'mongoose';
 
 export abstract class AbstractRepo<T> {
@@ -12,6 +13,10 @@ export abstract class AbstractRepo<T> {
 
   constructor(model: Model<T>) {
     this._model = model;
+  }
+
+  public get model(): Model<T> {
+    return this._model;
   }
 
   public async create(data: Partial<T>, options?: any): Promise<T> {
@@ -25,9 +30,6 @@ export abstract class AbstractRepo<T> {
     options?: QueryOptions,
   ): Promise<T | null> {
     return this._model.findOne(filter, projection, options).exec();
-    return this._model
-      .findOne(filter, projection, { lean: true, ...options })
-      .exec() as Promise<T | null>;
   }
 
   public async getAll(
@@ -36,9 +38,14 @@ export abstract class AbstractRepo<T> {
     options?: QueryOptions,
   ): Promise<T[]> {
     return this._model.find(filter, projection, options).exec();
-    return this._model
-      .find(filter, projection, { lean: true, ...options })
-      .exec() as Promise<T[]>;
+  }
+
+  public async findManyByIds(ids: (string | Types.ObjectId)[]): Promise<T[]> {
+    const validIds = ids
+      .filter((id) => Boolean(id) && Types.ObjectId.isValid(id.toString()))
+      .map((id) => new Types.ObjectId(id.toString()));
+    if (validIds.length === 0) return [];
+    return this._model.find({ _id: { $in: validIds } } as any).exec();
   }
 
   public async updateOne(

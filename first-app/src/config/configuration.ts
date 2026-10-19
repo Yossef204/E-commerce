@@ -28,4 +28,9 @@ export default () => ({
     host: process.env.REDIS_URL as string,
     port: 6379,
   },
+  payment: {
+    cardProvider: process.env.CARD_PAYMENT_PROVIDER || 'PAYMOB',
+    walletProvider: process.env.WALLET_PAYMENT_PROVIDER || 'PAYMOB',
+    instapayProvider: process.env.INSTAPAY_PAYMENT_PROVIDER || 'INTERNAL',
+  },
 });

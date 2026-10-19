@@ -31,7 +31,19 @@ export class AuthenticationGuard implements CanActivate {
       this.configService.get<string>('jwt.accessSecret') ||
       process.env.ACCESS_TOKEN_SECRET||
       'fallback_super_secret_key_123';
-    req.user = this.jwtService.verify(token, { secret: accessSecret });
-    return true;
+    try {
+      const decoded: any = this.jwtService.verify(token, { secret: accessSecret });
+      if (decoded) {
+        if (!decoded.id && decoded.sub) decoded.id = decoded.sub;
+        if (!decoded.sub && decoded.id) decoded.sub = decoded.id;
+      }
+      req.user = decoded;
+      return true;
+    } catch (error: any) {
+      if (error?.name === 'TokenExpiredError') {
+        throw new UnauthorizedException('SESSION_EXPIRED');
+      }
+      throw new UnauthorizedException('INVALID_TOKEN');
+    }
   }
 }

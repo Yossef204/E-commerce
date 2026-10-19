@@ -9,9 +9,13 @@ import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mo
 import { UserMongoModule } from '../../shared/modules/user.mongo.module';
 import { EscrowMongoModule } from '../../shared/modules/escrow.mongo.module';
 import { LedgerMongoModule } from '../../shared/modules/ledger.mongo.module';
+import { PaymentMongoModule } from '../../shared/modules/payment.mongo.module';
 import { JwtModule } from '@nestjs/jwt';
 import { PermissionsModule } from '../permissions/permissions.module';
 import { CouponModule } from '../coupon/coupon.module';
+import { SharedPaymentModule } from '../../shared/payment/shared-payment.module';
+import { NotificationModule } from '../notification/notification.module';
+import { MailModule } from '../../shared/mailer/mail.module';
 
 @Module({
   imports: [
@@ -22,9 +26,13 @@ import { CouponModule } from '../coupon/coupon.module';
     UserMongoModule,
     EscrowMongoModule,
     LedgerMongoModule,
+    PaymentMongoModule,
     PermissionsModule,
     JwtModule,
     CouponModule,
+    SharedPaymentModule,
+    NotificationModule,
+    MailModule,
   ],
   controllers: [OrderController],
   providers: [OrderService, OrderFactory],

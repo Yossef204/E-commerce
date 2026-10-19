@@ -65,7 +65,8 @@ export class SellingEntityController {
   async getProfile(@Req() req: any, @Param('ownerId') ownerId: string) {
     const role = (req.user?.role || '').toLowerCase();
     const isSuperAdmin = role === 'admin' || role === 'super_admin';
-    if (!isSuperAdmin && req.user?.sub !== ownerId) {
+    const currentUserId = req.user?.sub || req.user?.id || req.user?._id?.toString();
+    if (!isSuperAdmin && currentUserId !== ownerId) {
       throw new ForbiddenException('You can only view your own entity profile');
     }
     return this.sellingEntityService.getProfile(ownerId);

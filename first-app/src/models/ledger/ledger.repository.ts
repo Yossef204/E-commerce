@@ -12,6 +12,10 @@ export class LedgerRepo extends AbstractRepo<TLedgerEntry> {
     super(ledgerModel);
   }
 
+  public get model(): Model<TLedgerEntry> {
+    return this._model;
+  }
+
   public async updateOne(): Promise<never> {
     throw new MethodNotAllowedException(
       'Ledger entries are immutable append-only records and cannot be updated.',

@@ -60,7 +60,16 @@ export class CreateProductDto {
 
   @IsString()
   @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
   image?: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  images?: string[];
 
   @IsArray()
   @IsString({ each: true })

@@ -28,6 +28,10 @@ import { LedgerRepo } from '../../models/ledger/ledger.repository';
 import { UserRepo } from '../../models/user/user.repository';
 import { LedgerAccountEnum } from '../../common/enums/ledger-account.enum';
 import { LedgerEntryTypeEnum } from '../../common/enums/ledger-entry-type.enum';
+import {
+  LedgerMovementTypeEnum,
+  LedgerEntryStatusEnum,
+} from '../../models/ledger/ledger-entry.schema';
 import { RequestPayoutDto } from './dto/request-payout.dto';
 
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
@@ -287,38 +291,128 @@ export class PaymentService {
   }
 
   public async getSellerFinancialSummary(sellingEntityId: string) {
-    const escrows = await this.escrowRepo.getAll({
-      sellingEntityId: new Types.ObjectId(sellingEntityId),
-    });
+    const entityId = new Types.ObjectId(sellingEntityId);
 
-    const payouts = await this.payoutRepo.getAll({
-      sellingEntityId: new Types.ObjectId(sellingEntityId),
+    // 1. Gross Sales: مجموع حركات ORDER_CREDIT الحقيقية لهذا الكيان
+    const orderCredits = await this.ledgerRepo.getAll({
+      sellingEntityId: entityId,
+      entryType: LedgerMovementTypeEnum.ORDER_CREDIT,
     });
 
     let totalGrossSales = 0;
-    let totalPlatformFees = 0;
-    let heldBalance = 0;
-    let releasedBalance = 0;
+    let heldEscrowBalance = 0;
+    let availableOrderCredits = 0;
 
-    for (const e of escrows) {
-      totalGrossSales += e.grossAmount;
-      totalPlatformFees += e.platformFee;
+    for (const entry of orderCredits) {
+      const amt = Math.abs(entry.amount || 0);
+      totalGrossSales += amt;
 
-      if (e.status === EscrowStatusEnum.HELD) {
-        heldBalance += e.netAmount;
-      } else if (e.status === EscrowStatusEnum.RELEASED) {
-        releasedBalance += e.netAmount;
+      if (entry.status === LedgerEntryStatusEnum.HELD_ESCROW) {
+        heldEscrowBalance += amt;
+      } else if (
+        entry.status === LedgerEntryStatusEnum.AVAILABLE ||
+        entry.status === LedgerEntryStatusEnum.SETTLED
+      ) {
+        availableOrderCredits += amt;
       }
     }
 
+    // Fallback: If no order credit ledger entries exist yet, inspect Escrow collection
+    const escrows = await this.escrowRepo.getAll({ sellingEntityId: entityId });
+    if (orderCredits.length === 0) {
+      for (const e of escrows) {
+        totalGrossSales += e.grossAmount || 0;
+        if (e.status === EscrowStatusEnum.HELD) {
+          heldEscrowBalance += e.netAmount || 0;
+        } else if (e.status === EscrowStatusEnum.RELEASED) {
+          availableOrderCredits += e.netAmount || 0;
+        }
+      }
+    }
+
+    // 2. Platform Fees: مجموع حركات PLATFORM_FEE_DEBIT لنفس الكيان
+    const platformFeeEntries = await this.ledgerRepo.getAll({
+      sellingEntityId: entityId,
+      entryType: LedgerMovementTypeEnum.PLATFORM_FEE_DEBIT,
+    });
+
+    let totalPlatformFees = 0;
+    let totalCodPlatformFees = 0;
+    for (const fee of platformFeeEntries) {
+      const amt = Math.abs(fee.amount || 0);
+      totalPlatformFees += amt;
+
+      const isCod =
+        fee.paymentMethod === 'COD' ||
+        /cod/i.test(fee.reference || '') ||
+        /cod|دفع عند الاستلام|كاش/i.test(fee.description || '');
+      if (isCod) {
+        totalCodPlatformFees += amt;
+      }
+    }
+
+    // 3. Refund Debits: مجموع حركات REFUND_DEBIT
+    const refundDebitsEntries = await this.ledgerRepo.getAll({
+      sellingEntityId: entityId,
+      entryType: LedgerMovementTypeEnum.REFUND_DEBIT,
+    });
+    const totalRefundDebits = refundDebitsEntries.reduce(
+      (sum, r) => sum + Math.abs(r.amount || 0),
+      0,
+    );
+
+    // 4. Payout Debits: مجموع حركات PAYOUT_DEBIT (المسحوبات المنفذة)
+    const payoutDebitsEntries = await this.ledgerRepo.getAll({
+      sellingEntityId: entityId,
+      entryType: LedgerMovementTypeEnum.PAYOUT_DEBIT,
+      status: {
+        $in: [LedgerEntryStatusEnum.SETTLED, LedgerEntryStatusEnum.AVAILABLE],
+      },
+    });
+    const totalPayoutDebits = payoutDebitsEntries.reduce(
+      (sum, p) => sum + Math.abs(p.amount || 0),
+      0,
+    );
+
+    const payouts = await this.payoutRepo.getAll({
+      sellingEntityId: entityId,
+    });
+
+    // 5. Available Payout: ناتج المعادلة المحاسبية بعد خصم المرتجعات والمسحوبات وعمولات COD
+    const netCreditEarnings = Math.max(
+      0,
+      availableOrderCredits - totalRefundDebits - totalPayoutDebits,
+    );
+
+    let availablePayoutBalance = 0;
+    let outstandingCodDebt = 0;
+
+    if (netCreditEarnings >= totalCodPlatformFees) {
+      availablePayoutBalance = netCreditEarnings - totalCodPlatformFees;
+      outstandingCodDebt = 0;
+    } else {
+      availablePayoutBalance = 0;
+      outstandingCodDebt = totalCodPlatformFees - netCreditEarnings;
+    }
+
+    totalGrossSales = Math.round(totalGrossSales * 100) / 100;
+    totalPlatformFees = Math.round(totalPlatformFees * 100) / 100;
+    heldEscrowBalance = Math.round(heldEscrowBalance * 100) / 100;
+    availablePayoutBalance = Math.round(availablePayoutBalance * 100) / 100;
+
     return {
       sellingEntityId,
+      currency: 'EGP',
       summary: {
-        totalGrossSales: Math.round(totalGrossSales * 100) / 100,
-        totalPlatformFees: Math.round(totalPlatformFees * 100) / 100,
-        heldEscrowBalance: Math.round(heldBalance * 100) / 100,
-        availablePayoutBalance: Math.round(releasedBalance * 100) / 100,
-        totalEscrowRecords: escrows.length,
+        totalGrossSales,
+        totalPlatformFees,
+        heldEscrowBalance,
+        availablePayoutBalance,
+        totalRefundDebits: Math.round(totalRefundDebits * 100) / 100,
+        totalPayoutDebits: Math.round(totalPayoutDebits * 100) / 100,
+        totalCodPlatformFees: Math.round(totalCodPlatformFees * 100) / 100,
+        outstandingCodDebt: Math.round(outstandingCodDebt * 100) / 100,
+        totalEscrowRecords: orderCredits.length || escrows.length,
         totalPayoutBatches: payouts.length,
       },
       payoutHistory: payouts,

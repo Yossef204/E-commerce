@@ -12,6 +12,9 @@ import { PaymentService } from './payment.service';
 import { PaymentController } from './payment.controller';
 import { PaymentFactory } from './factory/payment.factory';
 
+import { PaymentWebhookController } from './payment-webhook.controller';
+import { SharedPaymentModule } from '../../shared/payment/shared-payment.module';
+
 @Module({
   imports: [
     PaymentMongoModule,
@@ -22,9 +25,10 @@ import { PaymentFactory } from './factory/payment.factory';
     SellingEntityMongoModule,
     UserMongoModule,
     InventoryMongoModule,
+    SharedPaymentModule,
     JwtModule,
   ],
-  controllers: [PaymentController],
+  controllers: [PaymentController, PaymentWebhookController],
   providers: [PaymentService, PaymentFactory],
   exports: [PaymentService],
 })

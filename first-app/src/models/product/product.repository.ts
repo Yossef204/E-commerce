@@ -9,4 +9,8 @@ export class ProductRepo extends AbstractRepo<TProduct> {
   constructor(@InjectModel(Product.name) productModel: Model<TProduct>) {
     super(productModel);
   }
+
+  public get model(): Model<TProduct> {
+    return this._model;
+  }
 }

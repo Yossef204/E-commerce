@@ -14,6 +14,9 @@ export class Category {
   slug: string;
 
   @Prop({ type: String })
+  description?: string;
+
+  @Prop({ type: String })
   image: string;
 
   @Prop({ type: String })

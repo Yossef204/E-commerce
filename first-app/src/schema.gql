@@ -1,0 +1,71 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input CatalogFilterInput {
+  brandId: String
+  categoryId: String
+  limit: Int = 12
+  page: Int = 1
+  search: String
+  sortBy: String
+  sortOrder: String
+}
+
+type Query {
+  """جلب تفاصيل منتج معتمد بالمعرف الخاص به"""
+  getProductDetails(id: ID!): StorefrontProduct!
+
+  """جلب كافة التصنيفات النشطة للعملاء في واجهة المتجر"""
+  getStorefrontCategories: [StorefrontCategory!]!
+
+  """جلب المنتجات المعتمدة فقط مع دعم البحث والفلترة والترتيب والترقيم"""
+  getStorefrontProducts(filter: CatalogFilterInput): StorefrontProductsResponse!
+}
+
+type StorefrontBrand {
+  id: ID!
+  name: String!
+  slug: String
+}
+
+type StorefrontCategory {
+  description: String
+  id: ID!
+  image: String
+  name: String!
+  slug: String
+}
+
+type StorefrontProduct {
+  brand: StorefrontBrand
+  brandName: String
+  category: StorefrontCategory
+  createdAt: String
+  description: String!
+  id: ID!
+  images: [String!]!
+  name: String!
+  price: Float!
+  sellingEntityId: String
+  slug: String
+  stock: Int!
+  title: String!
+  updatedAt: String
+  variants: [StorefrontProductVariant!]
+}
+
+type StorefrontProductVariant {
+  availableStock: Int
+  initialStock: Int
+  isActive: Boolean
+  price: Float!
+  sku: String!
+}
+
+type StorefrontProductsResponse {
+  items: [StorefrontProduct!]!
+  page: Int!
+  total: Int!
+  totalPages: Int!
+}

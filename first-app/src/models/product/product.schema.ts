@@ -91,6 +91,12 @@ export class Product {
 
   @Prop({ type: String, default: null })
   rejectionReason: string;
+
+  @Prop({ type: Number, default: 0, min: 0, max: 5 })
+  ratingsAverage: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  ratingsQuantity: number;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

@@ -1,15 +1,27 @@
-import { isName } from '../../../common/dto/validation.dto';
-import { IsOptional, IsString } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MinLength,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateCategoryDto {
-  @isName()
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(2)
+  @MaxLength(100)
   name: string;
 
   @IsString()
   @IsOptional()
-  image: string;
+  description?: string;
 
   @IsString()
   @IsOptional()
-  folderId: string;
+  image?: string;
+
+  @IsString()
+  @IsOptional()
+  folderId?: string;
 }

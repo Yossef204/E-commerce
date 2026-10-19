@@ -16,6 +16,12 @@ export class User {
   @Prop({ type: String })
   phoneNumber: string;
 
+  @Prop({ type: String, default: null })
+  address: string;
+
+  @Prop({ type: [String], default: [] })
+  addresses: string[];
+
   @Prop({
     type: String,
     required: true,
@@ -53,6 +59,14 @@ export class User {
 
   @Prop({ type: Date, default: null })
   emailVerificationOtpExpiresAt: Date | null;
+
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'SellingEntity',
+    default: null,
+    index: true,
+  })
+  sellingEntityId?: Types.ObjectId;
 }
 
 export const userSchema = SchemaFactory.createForClass(User);

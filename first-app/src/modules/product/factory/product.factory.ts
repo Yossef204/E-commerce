@@ -16,7 +16,7 @@ export class ProductFactory {
     product.title = dto.title.trim();
     product.slug =
       slugify(dto.title, { lower: true, strict: true }) + '-' + Date.now();
-    product.desc = dto.desc || '';
+    product.desc = dto.desc || dto.description || '';
     product.sellingEntityId = new Types.ObjectId(dto.sellingEntityId);
     product.categoryId = new Types.ObjectId(dto.categoryId);
 
@@ -29,8 +29,16 @@ export class ProductFactory {
 
     product.productType = dto.productType || ProductTypeEnum.SIMPLE;
     product.approvalStatus = ProductApprovalStatusEnum.PENDING_APPROVAL;
-    product.image = dto.image || '';
-    product.subImages = dto.subImages || [];
+
+    const imgList =
+      dto.images && dto.images.length > 0
+        ? dto.images
+        : dto.image
+        ? [dto.image, ...(dto.subImages || [])]
+        : [];
+    product.image = imgList[0] || dto.image || '';
+    product.subImages =
+      imgList.length > 1 ? imgList.slice(1) : dto.subImages || [];
 
     product.variants = dto.variants.map((vDto) => {
       const variant = new ProductVariant();

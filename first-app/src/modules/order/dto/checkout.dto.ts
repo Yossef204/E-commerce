@@ -29,4 +29,16 @@ export class CheckoutDto {
   @IsOptional()
   @IsString()
   customerId?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  walletNumber?: string;
+
+  @IsOptional()
+  @IsString()
+  transferReference?: string;
 }
