@@ -8,7 +8,7 @@ import {
 import type { UserRole } from '../types/auth';
 
 interface ProtectedRouteProps {
-  allowedRoles?: UserRole[];
+  allowedRoles?: (UserRole | string)[];
   requiredPermissions?: string[];
   children?: React.ReactNode;
 }

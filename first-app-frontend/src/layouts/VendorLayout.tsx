@@ -17,6 +17,7 @@ import {
   XCircle,
   Menu,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import vendorApi from '../api/vendorApi';
@@ -31,11 +32,6 @@ export const VendorLayout: React.FC = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!user?.sellingEntityId) {
-      navigate('/vendor/onboarding', { replace: true });
-      return;
-    }
-
     const fetchVendorEntity = async () => {
       if (!user?.id) {
         setLoading(false);
@@ -49,6 +45,12 @@ export const VendorLayout: React.FC = () => {
           return;
         }
         setEntity(entityData);
+        if (entityData._id && (!user.sellingEntityId || user.entityStatus !== entityData.status)) {
+          useAuthStore.getState().updateUser({
+            sellingEntityId: entityData._id,
+            entityStatus: entityData.status,
+          });
+        }
       } catch (err: any) {
         if (err.response?.status === 404) {
           navigate('/vendor/onboarding', { replace: true });
@@ -61,7 +63,7 @@ export const VendorLayout: React.FC = () => {
     };
 
     fetchVendorEntity();
-  }, [user, navigate]);
+  }, [user?.id, navigate]);
 
   const handleLogout = () => {
     clearAuth();
@@ -74,12 +76,9 @@ export const VendorLayout: React.FC = () => {
     { to: '/vendor/products/new', label: 'إضافة منتج جديد', icon: PlusCircle, end: false },
     { to: '/vendor/inventory', label: 'إدارة المخزون', icon: Boxes, end: false },
     { to: '/vendor/orders', label: 'الطلبات الواردة', icon: ShoppingBag, end: false },
+    { to: '/vendor/returns', label: 'طلبات المرتجعات', icon: RotateCcw, end: false },
     { to: '/vendor/payouts', label: 'المحفظة والمستحقات', icon: Wallet, end: false },
   ];
-
-  if (!user?.sellingEntityId) {
-    return null;
-  }
 
   if (loading) {
     return (
@@ -88,6 +87,10 @@ export const VendorLayout: React.FC = () => {
         <p className="text-sm font-semibold text-slate-300">جاري تحميل بيانات بوابة التاجر...</p>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (
@@ -229,6 +232,20 @@ export const VendorLayout: React.FC = () => {
 
         {/* Dynamic Content View */}
         <main className="flex-1 min-w-0">
+          {(entity?.status === 'PENDING_APPROVAL' || user?.entityStatus === 'PENDING_APPROVAL') && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-2xl p-4 flex items-start gap-3 shadow-sm mb-6">
+              <Clock className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5 animate-pulse" />
+              <div className="text-xs leading-relaxed">
+                <span className="font-bold block text-sm text-amber-950 mb-1">
+                  ⚠️ تنبيه: حساب متجرك قيد المراجعة والاعتماد من الإدارة
+                </span>
+                <p className="text-amber-800">
+                  يمكنك تصفح اللوحة وإعداد منتجاتك، وستظهر للجمهور فور التفعيل من قِبل إدارة المنصة.
+                </p>
+              </div>
+            </div>
+          )}
+
           {error ? (
             <div className="bg-white rounded-2xl border border-rose-200 p-8 text-center shadow-sm">
               <ShieldAlert className="w-12 h-12 text-rose-500 mx-auto mb-3" />

@@ -11,6 +11,7 @@ export interface SellingEntity {
   status: EntityStatus;
   rejectionReason?: string;
   primaryOwnerId: string;
+  brand?: Brand | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -92,6 +93,8 @@ export interface CreateProductPayload {
   categoryId: string;
   brandId: string;
   sellingEntityId: string;
+  images?: string[];
+  image?: string;
   variants: CreateVariantInput[];
 }
 
@@ -105,6 +108,8 @@ export interface Category {
   _id: string;
   name: string;
   slug?: string;
+  description?: string;
+  image?: string;
 }
 
 export interface Brand {
@@ -112,3 +117,80 @@ export interface Brand {
   name: string;
   slug?: string;
 }
+
+export type PayoutMethodType = 'BANK_ACCOUNT' | 'VODAFONE_CASH' | 'INSTAPAY';
+
+export interface PayoutMethodDetails {
+  accountHolderName?: string;
+  bankName?: string;
+  iban?: string;
+  swiftCode?: string;
+  walletNumber?: string;
+  instaPayAddress?: string;
+  [key: string]: any;
+}
+
+export interface SellerPayoutMethod {
+  _id: string;
+  sellingEntityId: string;
+  type: PayoutMethodType;
+  details: PayoutMethodDetails;
+  isDefault: boolean;
+  isVerified: boolean;
+  createdAt?: string;
+}
+
+export type LedgerMovementType =
+  | 'ORDER_CREDIT'
+  | 'PLATFORM_FEE_DEBIT'
+  | 'PAYOUT_DEBIT'
+  | 'REFUND_DEBIT';
+
+export type LedgerEntryStatus =
+  | 'HELD_ESCROW'
+  | 'AVAILABLE'
+  | 'SETTLED'
+  | 'CANCELLED';
+
+export interface LedgerEntry {
+  _id: string;
+  sellingEntityId: string;
+  orderId?: any;
+  entityOrderId?: any;
+  entryType: LedgerMovementType;
+  account?: string;
+  type?: string;
+  amount: number;
+  currency: string;
+  balanceAfter: number;
+  status: LedgerEntryStatus;
+  paymentMethod?: string;
+  reference?: string;
+  description: string;
+  createdAt: string;
+}
+
+export interface WalletBalanceSummary {
+  pendingBalance: number;
+  availableBalance: number;
+  withdrawnBalance: number;
+  platformDues?: number;
+  currency: string;
+}
+
+export interface PayoutRequestItem {
+  _id: string;
+  sellingEntityId: string;
+  amount: number;
+  payoutMethodId: string;
+  payoutMethodSnapshot: {
+    type: PayoutMethodType;
+    details: PayoutMethodDetails;
+  };
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'REJECTED';
+  gatewayReference?: string;
+  requestedAt: string;
+  processedAt?: string;
+  rejectionReason?: string;
+}
+

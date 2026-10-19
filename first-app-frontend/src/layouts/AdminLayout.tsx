@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Store,
+  Tag,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { NotificationBell } from '../components/NotificationBell';
@@ -30,6 +31,7 @@ export const AdminLayout: React.FC = () => {
     { to: '/admin', label: 'نظرة عامة والتحليلات', icon: LayoutDashboard, end: true },
     { to: '/admin/entities', label: 'اعتماد الكيانات والمتاجر', icon: Building2, end: false },
     { to: '/admin/products', label: 'مراجعة الكتالوج والمنتجات', icon: PackageCheck, end: false },
+    { to: '/admin/categories', label: 'إدارة الأقسام والتصنيفات', icon: Tag, end: false },
     { to: '/admin/finance', label: 'التسويات المالية والـ Escrow', icon: Landmark, end: false },
     { to: '/admin/audit-logs', label: 'سجل التدقيق والأمان', icon: ShieldCheck, end: false },
   ];

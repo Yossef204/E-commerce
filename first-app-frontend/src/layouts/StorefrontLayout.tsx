@@ -12,16 +12,21 @@ import {
   Phone,
   Mail,
   MapPin,
+  User,
+  Package,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useCartStore } from '../store/useCartStore';
+import { CartDrawer } from '../modules/storefront/components/CartDrawer';
 
 export const StorefrontLayout: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user, clearAuth } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
 
-  const cartCount = 0; // Placeholder for cart count state
+  const cartCount = useCartStore((state) => state.getTotalItems());
 
   const handleLogout = () => {
     clearAuth();
@@ -31,7 +36,7 @@ export const StorefrontLayout: React.FC = () => {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      // Future search query handling
+      navigate(`/?search=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
@@ -80,10 +85,14 @@ export const StorefrontLayout: React.FC = () => {
             {/* Right Nav Options */}
             <div className="flex items-center gap-3">
               {/* Cart Button */}
-              <button className="relative p-2.5 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors">
+              <button
+                onClick={() => setIsCartDrawerOpen(true)}
+                className="relative p-2.5 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                title="سلة المشتريات"
+              >
                 <ShoppingCart className="w-6 h-6" />
                 {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
                     {cartCount}
                   </span>
                 )}
@@ -92,14 +101,34 @@ export const StorefrontLayout: React.FC = () => {
               {/* User Account Dropdown / Actions */}
               {isAuthenticated && user ? (
                 <div className="flex items-center gap-2 pr-2 border-r border-slate-200">
-                  <div className="flex flex-col text-right">
+                  <Link
+                    to="/profile"
+                    className="flex flex-col text-right hover:opacity-80 transition-opacity"
+                    title="الملف الشخصي"
+                  >
                     <span className="text-xs font-bold text-slate-900 leading-tight">
                       {user.userName}
                     </span>
                     <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 inline-block self-start mt-0.5">
                       {user.role}
                     </span>
-                  </div>
+                  </Link>
+
+                  <Link
+                    to="/profile"
+                    title="الملف الشخصي"
+                    className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    <User className="w-5 h-5" />
+                  </Link>
+
+                  <Link
+                    to="/my-orders"
+                    title="طلباتي"
+                    className="p-2 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  >
+                    <Package className="w-5 h-5" />
+                  </Link>
 
                   {/* Panel Shortcut buttons depending on role */}
                   {(user.role === 'SELLER' || user.role === 'COMPANY_ADMIN' || user.role === 'seller') && (
@@ -176,18 +205,58 @@ export const StorefrontLayout: React.FC = () => {
               <Link to="/" className="px-3 py-2 rounded-lg hover:bg-slate-100">
                 الرئيسية
               </Link>
-              {isAuthenticated && (
+              {isAuthenticated ? (
                 <>
+                  <Link
+                    to="/profile"
+                    className="px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2"
+                  >
+                    <User className="w-4 h-4 text-blue-600" />
+                    <span>الملف الشخصي</span>
+                  </Link>
+                  <Link
+                    to="/my-orders"
+                    className="px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2"
+                  >
+                    <Package className="w-4 h-4 text-blue-600" />
+                    <span>طلباتي</span>
+                  </Link>
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setIsCartDrawerOpen(true);
+                    }}
+                    className="text-right px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2"
+                  >
+                    <ShoppingCart className="w-4 h-4 text-blue-600" />
+                    <span>سلة المشتريات ({cartCount})</span>
+                  </button>
                   <Link to="/vendor" className="px-3 py-2 rounded-lg hover:bg-slate-100">
                     لوحة البائع
                   </Link>
                   <button
                     onClick={handleLogout}
-                    className="text-right px-3 py-2 rounded-lg text-red-600 hover:bg-red-50"
+                    className="text-right px-3 py-2 rounded-lg text-red-600 hover:bg-red-50 flex items-center gap-2"
                   >
-                    تسجيل الخروج
+                    <LogOut className="w-4 h-4" />
+                    <span>تسجيل الخروج</span>
                   </button>
                 </>
+              ) : (
+                <div className="flex flex-col gap-2 pt-2 border-t border-slate-100">
+                  <Link
+                    to="/login"
+                    className="px-3 py-2 text-center rounded-lg bg-slate-100 hover:bg-slate-200 font-bold"
+                  >
+                    تسجيل الدخول
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="px-3 py-2 text-center rounded-lg bg-blue-600 text-white font-bold"
+                  >
+                    إنشاء حساب جديد
+                  </Link>
+                </div>
               )}
             </nav>
           </div>
@@ -198,6 +267,9 @@ export const StorefrontLayout: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Outlet />
       </main>
+
+      {/* Reactive Cart Drawer */}
+      <CartDrawer isOpen={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)} />
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-sm border-t border-slate-800 mt-auto">

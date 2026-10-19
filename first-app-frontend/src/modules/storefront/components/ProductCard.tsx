@@ -77,6 +77,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
             <img
               src={image}
               alt={product.title}
+              onError={(e) => {
+                (e.target as HTMLImageElement).src =
+                  'https://placehold.co/400x400?text=Product';
+              }}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
           ) : (

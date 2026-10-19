@@ -10,13 +10,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@apollo/client": "^4.3.2",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-query": "^5.103.2",
     "axios": "^1.20.0",
+    "graphql": "^17.0.2",
     "lucide-react": "^1.47.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",
+    "rxjs": "^7.8.2",
     "socket.io-client": "^4.8.4",
     "zustand": "^5.0.15"
   },

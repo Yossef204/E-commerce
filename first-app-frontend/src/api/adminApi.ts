@@ -7,6 +7,8 @@ import type {
   VendorPayoutSummary,
   AuditLogItem,
   NotificationItem,
+  CategoryAdmin,
+  VendorReportFullData,
 } from '../types/admin';
 
 export const adminApi = {
@@ -35,25 +37,38 @@ export const adminApi = {
   },
 
   async getProductsForModeration(approvalStatus?: string): Promise<ProductModerationItem[]> {
-    const res = await apiClient.get<{ success: boolean; data: ProductModerationItem[] }>(
+    const res = await apiClient.get<any>(
       '/products',
       {
         params: approvalStatus ? { approvalStatus } : undefined,
       }
     );
-    return res.data.data || [];
+    const products = res.data?.data || res.data?.products || res.data || [];
+    return Array.isArray(products) ? products : [];
   },
 
   async updateProductApproval(
     id: string,
     approvalStatus: string,
     rejectionReason?: string
-  ): Promise<ProductModerationItem> {
-    const res = await apiClient.patch<{ message: string; data: ProductModerationItem }>(
+  ): Promise<any> {
+    const res = await apiClient.patch<any>(
       `/products/${id}/approval`,
       { approvalStatus, rejectionReason }
     );
-    return res.data.data;
+    return res.data?.data || res.data;
+  },
+
+  async approveProduct(id: string): Promise<any> {
+    const res = await apiClient.patch<any>(`/products/${id}/approve`);
+    return res.data?.data || res.data;
+  },
+
+  async rejectProduct(id: string, rejectionReason?: string): Promise<any> {
+    const res = await apiClient.patch<any>(`/products/${id}/reject`, {
+      rejectionReason,
+    });
+    return res.data?.data || res.data;
   },
 
   async getEscrowLedgers(): Promise<EscrowLedgerItem[]> {
@@ -107,6 +122,61 @@ export const adminApi = {
   async markNotificationAsRead(id: string): Promise<any> {
     const res = await apiClient.patch(`/notifications/${id}/read`);
     return res.data;
+  },
+
+  async getCategories(): Promise<CategoryAdmin[]> {
+    const res = await apiClient.get<CategoryAdmin[] | { success: boolean; data: CategoryAdmin[] }>('/category');
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    return (res.data as any).data || [];
+  },
+
+  async createCategory(data: { name: string; description?: string; image?: string; folderId?: string }): Promise<CategoryAdmin> {
+    const res = await apiClient.post<any>('/category', data);
+    return res.data?.data || res.data;
+  },
+
+  async updateCategory(
+    id: string,
+    data: { name?: string; description?: string; image?: string; folderId?: string }
+  ): Promise<CategoryAdmin> {
+    const res = await apiClient.patch<any>(`/category/${id}`, data);
+    return res.data?.data || res.data;
+  },
+
+  async deleteCategory(id: string): Promise<any> {
+    const res = await apiClient.delete<any>(`/category/${id}`);
+    return res.data;
+  },
+
+  async getVendorReport(
+    entityId: string,
+    params?: { period?: string; startDate?: string; endDate?: string }
+  ): Promise<VendorReportFullData> {
+    const res = await apiClient.get<{ success: boolean; data: VendorReportFullData }>(
+      `/admin/reports/vendors/${entityId}`,
+      { params }
+    );
+    return res.data?.data || (res.data as any);
+  },
+
+  async downloadVendorReportCsv(
+    entityId: string,
+    params?: { period?: string; startDate?: string; endDate?: string }
+  ): Promise<void> {
+    const res = await apiClient.get(`/admin/reports/vendors/${entityId}/csv`, {
+      params,
+      responseType: 'blob',
+    });
+    const blob = new Blob([res.data], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `vendor-report-${entityId}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   },
 };
 

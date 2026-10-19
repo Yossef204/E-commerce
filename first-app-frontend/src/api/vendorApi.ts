@@ -8,6 +8,12 @@ import type {
   UpdateInventoryPayload,
   Category,
   Brand,
+  SellerPayoutMethod,
+  PayoutMethodType,
+  PayoutMethodDetails,
+  LedgerEntry,
+  WalletBalanceSummary,
+  PayoutRequestItem,
 } from '../types/vendor';
 
 export const vendorApi = {
@@ -79,14 +85,143 @@ export const vendorApi = {
 
   // Fetch categories list
   async getCategories(): Promise<Category[]> {
-    const res = await apiClient.get<{ success: boolean; data: Category[] }>('/categories');
-    return res.data.data || [];
+    const res = await apiClient.get<any>('/category');
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    if (res.data?.data && Array.isArray(res.data.data)) {
+      return res.data.data;
+    }
+    return [];
   },
 
   // Fetch brands list
   async getBrands(): Promise<Brand[]> {
-    const res = await apiClient.get<{ success: boolean; data: Brand[] }>('/brands');
-    return res.data.data || [];
+    const res = await apiClient.get<any>('/brand');
+    if (Array.isArray(res.data)) {
+      return res.data;
+    }
+    if (res.data?.data && Array.isArray(res.data.data)) {
+      return res.data.data;
+    }
+    return [];
+  },
+
+  // Fetch seller wallet balance summary (pending, available, withdrawn)
+  async getWalletBalance(sellingEntityId?: string): Promise<WalletBalanceSummary> {
+    const res = await apiClient.get<{ success: boolean; data: WalletBalanceSummary }>(
+      '/seller/wallet/balance',
+      { params: sellingEntityId ? { sellingEntityId } : undefined }
+    );
+    return res.data.data;
+  },
+
+  // Fetch paginated ledger entries
+  async getLedgerEntries(params?: {
+    sellingEntityId?: string;
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<{
+    entries: LedgerEntry[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
+    const res = await apiClient.get<any>('/seller/wallet/ledger', { params });
+    return res.data;
+  },
+
+  // Fetch all seller payout methods
+  async getPayoutMethods(sellingEntityId?: string): Promise<SellerPayoutMethod[]> {
+    const res = await apiClient.get<{ success: boolean; data: SellerPayoutMethod[] }>(
+      '/seller/payout-methods',
+      { params: sellingEntityId ? { sellingEntityId } : undefined }
+    );
+    return res.data.data;
+  },
+
+  // Add new payout method
+  async createPayoutMethod(payload: {
+    type: PayoutMethodType;
+    details: PayoutMethodDetails;
+    isDefault?: boolean;
+    sellingEntityId?: string;
+  }): Promise<SellerPayoutMethod> {
+    const res = await apiClient.post<{ success: boolean; message: string; data: SellerPayoutMethod }>(
+      '/seller/payout-methods',
+      payload
+    );
+    return res.data.data;
+  },
+
+  // Set default payout method
+  async setDefaultPayoutMethod(
+    methodId: string,
+    sellingEntityId?: string
+  ): Promise<SellerPayoutMethod> {
+    const res = await apiClient.patch<{ success: boolean; message: string; data: SellerPayoutMethod }>(
+      `/seller/payout-methods/${methodId}/default`,
+      null,
+      { params: sellingEntityId ? { sellingEntityId } : undefined }
+    );
+    return res.data.data;
+  },
+
+  // Request seller payout
+  async requestPayout(payload: {
+    amount: number;
+    payoutMethodId: string;
+    sellingEntityId?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    message: string;
+    payoutRequest: PayoutRequestItem;
+    gatewayReference: string;
+    newBalance: number;
+  }> {
+    const res = await apiClient.post<any>('/seller/payouts/request', payload);
+    return res.data;
+  },
+
+  // Get payout requests history
+  async getPayoutHistory(sellingEntityId?: string): Promise<PayoutRequestItem[]> {
+    const res = await apiClient.get<{ success: boolean; data: PayoutRequestItem[] }>(
+      '/seller/payouts',
+      { params: sellingEntityId ? { sellingEntityId } : undefined }
+    );
+    return res.data.data;
+  },
+
+  // Get vendor returns
+  async getVendorReturns(
+    sellingEntityId: string,
+    params?: { page?: number; limit?: number; status?: string }
+  ) {
+    const res = await apiClient.get(`/returns/vendor/${sellingEntityId}`, { params });
+    return res.data;
+  },
+
+  // Inspect and update return status
+  async inspectReturnRequest(
+    returnId: string,
+    payload: {
+      status: string;
+      inspectionResult?: string;
+      vendorNote?: string;
+      rejectionReason?: string;
+    }
+  ) {
+    const res = await apiClient.patch(`/returns/${returnId}/inspect`, payload);
+    return res.data;
+  },
+
+  // Process refund for an inspected return
+  async processRefund(returnId: string) {
+    const res = await apiClient.post(`/returns/${returnId}/refund`);
+    return res.data;
   },
 };
 

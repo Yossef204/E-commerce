@@ -8,6 +8,7 @@ import {
   LogOut,
   LayoutDashboard,
   ShieldCheck,
+  Tag,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -26,6 +27,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({ onItemClick }) => {
 
   const navItems = [
     { to: '/admin', label: 'نظرة عامة والتحليلات', icon: LayoutDashboard, end: true },
+    { to: '/admin/categories', label: 'إدارة الأقسام والتصنيفات', icon: Tag, end: false },
     { to: '/admin/entities', label: 'مراجعة واعتماد الكيانات التجارية', icon: Building2, end: false },
     { to: '/admin/products', label: 'مراجعة واعتماد المنتجات', icon: PackageCheck, end: false },
     { to: '/admin/permissions', label: 'إدارة الصلاحيات', icon: Users, end: false },

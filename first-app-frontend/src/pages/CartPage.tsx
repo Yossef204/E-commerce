@@ -7,9 +7,9 @@ import {
   Minus,
   ArrowRight,
   ShieldCheck,
-  Package,
 } from 'lucide-react';
 import { useCartStore } from '../store/useCartStore';
+import { getImageUrl, handleImageError } from '../utils/imageHelper';
 
 export const CartPage: React.FC = () => {
   const navigate = useNavigate();
@@ -85,15 +85,13 @@ export const CartPage: React.FC = () => {
               >
                 {/* Product Image */}
                 <div className="w-20 h-20 sm:w-24 sm:h-24 bg-slate-50 rounded-xl overflow-hidden shrink-0 flex items-center justify-center border border-slate-100">
-                  {item.image ? (
-                    <img
-                      src={item.image}
-                      alt={item.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <Package className="w-8 h-8 text-slate-300 stroke-[1.5]" />
-                  )}
+                  <img
+                    src={getImageUrl(item.image)}
+                    alt={item.title}
+                    onError={handleImageError}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 </div>
 
                 {/* Details */}

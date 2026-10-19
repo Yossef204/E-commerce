@@ -25,7 +25,8 @@ export const Login: React.FC = () => {
         password,
       });
 
-      const { accessToken, refreshToken, sessionId, user: responseUser } = response.data.data;
+      const responseData = response.data?.data || response.data;
+      const { accessToken, refreshToken, sessionId, user: responseUser } = responseData;
       const parsedPayload = parseJwt(accessToken);
 
       const userRole: UserRole =
@@ -135,6 +136,14 @@ export const Login: React.FC = () => {
                 className="w-full pr-11 pl-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-sm text-slate-800"
               />
               <Lock className="w-5 h-5 text-slate-400 absolute right-3.5 top-3.5" />
+            </div>
+            <div className="flex justify-end mt-1.5">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium"
+              >
+                نسيت كلمة المرور؟
+              </Link>
             </div>
           </div>
 

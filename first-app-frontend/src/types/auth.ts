@@ -1,4 +1,16 @@
-export type UserRole = 'CUSTOMER' | 'SELLER' | 'COMPANY_ADMIN' | 'SUPER_ADMIN' | 'user' | 'admin' | 'seller' | 'company_admin' | 'customer';
+export type UserRole =
+  | 'CUSTOMER'
+  | 'SELLER'
+  | 'COMPANY_ADMIN'
+  | 'SUPER_ADMIN'
+  | 'user'
+  | 'admin'
+  | 'seller'
+  | 'company_admin'
+  | 'customer'
+  | 'super_admin'
+  | 'ADMIN'
+  | 'superadmin';
 
 export interface User {
   id: string;
@@ -26,6 +38,8 @@ export interface AuthState {
     sessionId?: string;
     user: User;
   }) => void;
+  // دالة تحديث التوكنز السريعة الخاصة بالـ Refresh Token
+  setTokens: (token: string, refreshToken?: string) => void;
   updateUser: (user: Partial<User>) => void;
   clearAuth: () => void;
   logout: () => void;

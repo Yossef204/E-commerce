@@ -45,14 +45,23 @@ export interface ProductVariantAdmin {
 export interface ProductModerationItem {
   _id: string;
   sellingEntityId: string;
+  sellingEntityName?: string;
+  tradeName?: string;
   title: string;
-  description: string;
+  description?: string;
+  desc?: string;
   categoryId: string;
+  categoryName?: string;
   brandId: string;
+  brandName?: string;
   approvalStatus: ProductApprovalStatus;
   rejectionReason?: string;
   variants: ProductVariantAdmin[];
   images?: string[];
+  image?: string;
+  subImages?: string[];
+  price?: number;
+  stock?: number;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -116,3 +125,96 @@ export interface NotificationItem {
   metadata?: Record<string, any>;
   createdAt?: string;
 }
+
+export interface CategoryAdmin {
+  _id: string;
+  name: string;
+  slug?: string;
+  description?: string;
+  image?: string;
+  folderId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface VendorPeriodReport {
+  sellingEntityId: string;
+  tradeName: string;
+  currency: string;
+  period: string;
+  startDate: string;
+  endDate: string;
+  grossSales: number;
+  platformFees: number;
+  totalRefundedAmount: number;
+  netVendorEarnings: number;
+  completedOrdersCount: number;
+  refundsCount: number;
+  totalOrdersCount: number;
+  orders: Array<{
+    entityOrderId: string;
+    subtotal: number;
+    commissionAmount?: number;
+    status: string;
+    createdAt: string;
+  }>;
+}
+
+export interface VendorDecisionAnalytics {
+  returnRate: {
+    totalOrders: number;
+    returnOrders: number;
+    ratePercentage: number;
+    status: 'NORMAL' | 'WARNING';
+    badge: string;
+    decision: string;
+    isAlert: boolean;
+  };
+  codDebt: {
+    totalCodSales: number;
+    totalCodPlatformFees: number;
+    availableBalance: number;
+    outstandingCodDebt: number;
+    threshold: number;
+    status: 'SAFE' | 'CRITICAL';
+    badge: string;
+    decision: string;
+    recommendSuspendCod: boolean;
+    isAlert: boolean;
+  };
+  fulfillmentVelocity: {
+    deliveredOrdersAnalyzed: number;
+    averageDeliveryHours: number;
+    averageDeliveryDays: number;
+    status: 'EXCELLENT' | 'GOOD' | 'SLOW' | 'INSUFFICIENT_DATA';
+    badge: string;
+    decision: string;
+    isTopSellerPriority: boolean;
+  };
+}
+
+export interface VendorReportFullData {
+  financialSummary: {
+    sellingEntityId: string;
+    tradeName: string;
+    currency: string;
+    summary: {
+      totalGrossSales: number;
+      totalPlatformFees: number;
+      heldEscrowBalance: number;
+      availablePayoutBalance: number;
+      totalRefundDebits: number;
+      totalPayoutDebits: number;
+      totalCodPlatformFees: number;
+      outstandingCodDebt: number;
+      totalEscrowRecords: number;
+      totalPayoutBatches: number;
+      totalLedgerEntries: number;
+    };
+    payoutHistory: any[];
+  };
+  periodReport: VendorPeriodReport;
+  decisionAnalytics: VendorDecisionAnalytics;
+}
+
+
