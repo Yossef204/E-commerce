@@ -15,6 +15,8 @@ import { CheckoutPage } from './pages/CheckoutPage';
 import { MyOrdersPage } from './modules/storefront/pages/MyOrdersPage';
 import { Login } from './modules/auth/Login';
 import { Register } from './modules/auth/Register';
+import { SellerRegisterPage } from './modules/auth/SellerRegisterPage';
+import { SellerPendingApprovalPage } from './modules/seller/SellerPendingApprovalPage';
 import { VerifyOtp } from './modules/auth/VerifyOtp';
 import { ForgotPassword } from './modules/auth/ForgotPassword';
 import { ResetPassword } from './modules/auth/ResetPassword';
@@ -58,6 +60,9 @@ export const App: React.FC = () => {
           {/* Public Auth Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/register-seller" element={<SellerRegisterPage />} />
+          <Route path="/seller/pending-approval" element={<SellerPendingApprovalPage />} />
+          <Route path="/vendor/pending-approval" element={<SellerPendingApprovalPage />} />
           <Route path="/verify-otp" element={<VerifyOtp />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
@@ -65,14 +70,6 @@ export const App: React.FC = () => {
           {/* Vendor Onboarding Route */}
           <Route
             path="/vendor/onboarding"
-            element={
-              <ProtectedRoute allowedRoles={['SELLER', 'COMPANY_ADMIN', 'seller', 'company_admin']}>
-                <VendorOnboardingPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/vendor/pending-approval"
             element={
               <ProtectedRoute allowedRoles={['SELLER', 'COMPANY_ADMIN', 'seller', 'company_admin']}>
                 <VendorOnboardingPage />
@@ -102,6 +99,8 @@ export const App: React.FC = () => {
             <Route path="wallet" element={<VendorPayoutsPage />} />
           </Route>
 
+          <Route path="/seller/dashboard" element={<Navigate to="/vendor/dashboard" replace />} />
+          <Route path="/seller" element={<Navigate to="/vendor/dashboard" replace />} />
           <Route path="/seller/finance" element={<Navigate to="/vendor/payouts" replace />} />
           <Route path="/seller/wallet" element={<Navigate to="/vendor/payouts" replace />} />
 

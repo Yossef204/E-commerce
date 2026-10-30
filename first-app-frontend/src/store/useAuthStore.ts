@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { AuthState, UserRole } from '../types/auth';
+import { useCartStore } from './useCartStore';
 import {
   decodeJwtPayload,
   isTokenExpired,
@@ -159,6 +160,8 @@ export const useAuthStore = create<ExtendedAuthState>()(
           user,
           isAuthenticated: true,
         });
+        // مزامنة السلة الخاصة بالمستخدم فور تسجيل الدخول
+        useCartStore.getState().initUserCart(user?.id);
       },
 
       // دالة التحديث السريع للـ Tokens الناتجة عن الـ Refresh
@@ -177,6 +180,8 @@ export const useAuthStore = create<ExtendedAuthState>()(
       },
 
       clearAuth: () => {
+        // تفريغ السلة ومسح مفتاحها من التخزين المحلي فوراً
+        useCartStore.getState().resetCart();
         set({
           token: null,
           refreshToken: null,
@@ -187,6 +192,7 @@ export const useAuthStore = create<ExtendedAuthState>()(
       },
 
       logout: () => {
+        useCartStore.getState().resetCart();
         get().clearAuth();
       },
 

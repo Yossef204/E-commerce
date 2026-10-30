@@ -33,6 +33,7 @@ export const AdminLayout: React.FC = () => {
     { to: '/admin/products', label: 'مراجعة الكتالوج والمنتجات', icon: PackageCheck, end: false },
     { to: '/admin/categories', label: 'إدارة الأقسام والتصنيفات', icon: Tag, end: false },
     { to: '/admin/finance', label: 'التسويات المالية والـ Escrow', icon: Landmark, end: false },
+    { to: '/admin/permissions', label: 'مصفوفة وإدارة الصلاحيات (RBAC)', icon: Shield, end: false },
     { to: '/admin/audit-logs', label: 'سجل التدقيق والأمان', icon: ShieldCheck, end: false },
   ];
 

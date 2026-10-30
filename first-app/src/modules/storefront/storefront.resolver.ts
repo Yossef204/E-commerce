@@ -14,7 +14,9 @@ import { BrandType } from './types/brand.type';
 import { PaginatedProductsType, ProductType } from './types/product.type';
 import { CatalogFilterInput } from './dto/catalog-filter.input';
 import { IDataloaders } from './dataloader/dataloader.service';
+import { Public } from '../../common/decorators/public.decorator';
 
+@Public()
 @Resolver(() => ProductType)
 export class StorefrontResolver {
   constructor(private readonly storefrontService: StorefrontService) {}

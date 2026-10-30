@@ -246,6 +246,16 @@ export class PaymentService {
     }
   }
 
+  public async getAllEscrows() {
+    const escrows = await this.escrowRepo.getAll({}, undefined, {
+      sort: { createdAt: -1 },
+    });
+    return {
+      success: true,
+      data: escrows,
+    };
+  }
+
   public async processVendorPayout(dto: ProcessPayoutDto) {
     const sellingEntityId = new Types.ObjectId(dto.sellingEntityId);
 

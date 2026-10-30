@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Inject,
+  Optional,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection, Types } from 'mongoose';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
@@ -43,7 +47,27 @@ export class SellingEntityService {
     private readonly permissionRepo: PermissionRepo,
     private readonly brandRepo: BrandRepo,
     @InjectConnection() private readonly connection: Connection,
+    @Optional() @Inject(CACHE_MANAGER) private readonly cacheManager?: Cache,
   ) {}
+
+  private async invalidateTokenVersion(
+    userId: string | Types.ObjectId,
+  ): Promise<void> {
+    if (!this.cacheManager || !userId) return;
+    try {
+      const key = `auth:token_version:${userId.toString()}`;
+      const store = (this.cacheManager as any)?.store;
+      if (store?.client?.incr) {
+        await store.client.incr(key);
+      } else {
+        const current =
+          (await this.cacheManager.get<number | string>(key)) || 1;
+        await this.cacheManager.set(key, Number(current) + 1);
+      }
+    } catch {
+      // non-blocking
+    }
+  }
 
   async registerCompany(
     ownerIdStr: string,
@@ -213,6 +237,10 @@ export class SellingEntityService {
         );
       }
 
+      if (entity.primaryOwnerId) {
+        await this.invalidateTokenVersion(entity.primaryOwnerId);
+      }
+
       const doc = (updatedEntity as any)?.toObject ? (updatedEntity as any).toObject() : updatedEntity;
       const normalizedEntity = {
         ...doc,
@@ -343,15 +371,114 @@ export class SellingEntityService {
         o.status === EntityOrderStatusEnum.CONFIRMED,
     ).length;
 
-    const escrows = await this.escrowRepo.getAll({ sellingEntityId });
     let escrowBalance = 0;
     let availablePayoutBalance = 0;
 
-    for (const e of escrows) {
-      if (e.status === EscrowStatusEnum.HELD) {
-        escrowBalance += e.netAmount;
-      } else if (e.status === EscrowStatusEnum.RELEASED) {
-        availablePayoutBalance += e.netAmount;
+    const ledgerModel = this.connection.models['LedgerEntry'];
+    if (ledgerModel) {
+      const [ledgerAgg] = await ledgerModel.aggregate([
+        { $match: { sellingEntityId } },
+        {
+          $group: {
+            _id: null,
+            availableOrderCredit: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$entryType', 'ORDER_CREDIT'] },
+                      { $eq: ['$status', 'AVAILABLE'] },
+                    ],
+                  },
+                  { $abs: '$amount' },
+                  0,
+                ],
+              },
+            },
+            heldEscrowBalance: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$entryType', 'ORDER_CREDIT'] },
+                      { $eq: ['$status', 'HELD_ESCROW'] },
+                    ],
+                  },
+                  { $abs: '$amount' },
+                  0,
+                ],
+              },
+            },
+            refundDebit: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$entryType', 'REFUND_DEBIT'] },
+                  { $abs: '$amount' },
+                  0,
+                ],
+              },
+            },
+            payoutDebit: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$entryType', 'PAYOUT_DEBIT'] },
+                  { $abs: '$amount' },
+                  0,
+                ],
+              },
+            },
+            codDues: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $eq: ['$entryType', 'PLATFORM_FEE_DEBIT'] },
+                      {
+                        $or: [
+                          { $eq: ['$paymentMethod', 'COD'] },
+                          {
+                            $regexMatch: {
+                              input: { $ifNull: ['$reference', ''] },
+                              regex: /^COD/i,
+                            },
+                          },
+                          {
+                            $regexMatch: {
+                              input: { $ifNull: ['$description', ''] },
+                              regex: /COD|دفع عند الاستلام|كاش/i,
+                            },
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                  { $abs: '$amount' },
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]);
+
+      const availableCredit = ledgerAgg?.availableOrderCredit || 0;
+      escrowBalance = ledgerAgg?.heldEscrowBalance || 0;
+      const refundDebit = ledgerAgg?.refundDebit || 0;
+      const payoutDebit = ledgerAgg?.payoutDebit || 0;
+      const codDues = ledgerAgg?.codDues || 0;
+
+      const netCredit = availableCredit - refundDebit - payoutDebit;
+      availablePayoutBalance = netCredit >= codDues ? netCredit - codDues : 0;
+    }
+
+    if (escrowBalance === 0 && availablePayoutBalance === 0) {
+      const escrows = await this.escrowRepo.getAll({ sellingEntityId });
+      for (const e of escrows) {
+        if (e.status === EscrowStatusEnum.HELD) {
+          escrowBalance += e.netAmount;
+        } else if (e.status === EscrowStatusEnum.RELEASED) {
+          availablePayoutBalance += e.netAmount;
+        }
       }
     }
 

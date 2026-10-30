@@ -60,7 +60,6 @@ export const Register: React.FC = () => {
         email: email.trim(),
         password,
         phoneNumber: formattedPhone,
-        role: accountType, // يرسل 'customer' أو 'seller' أو 'company_admin'
       });
 
       if (response.data?.success || response.status === 201 || response.status === 200) {
@@ -118,29 +117,23 @@ export const Register: React.FC = () => {
               {/* 2. تاجر مستقل */}
               <button
                 type="button"
-                onClick={() => setAccountType('seller')}
-                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all ${
-                  accountType === 'seller'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm ring-1 ring-blue-500'
-                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                }`}
+                onClick={() => navigate('/register-seller')}
+                className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-indigo-50 hover:border-indigo-300 flex flex-col items-center justify-center gap-1.5 text-center transition-all group"
               >
-                <Store className="w-5 h-5 text-indigo-600" />
-                <span className="text-xs font-bold">تاجر مستقل (فرد)</span>
+                <Store className="w-5 h-5 text-indigo-600 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold text-slate-700">تاجر مستقل (فرد)</span>
+                <span className="text-[10px] text-indigo-600 font-semibold">انتقل للتسجيل &larr;</span>
               </button>
 
               {/* 3. شركة / علامة تجارية */}
               <button
                 type="button"
-                onClick={() => setAccountType('company_admin')}
-                className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1.5 text-center transition-all ${
-                  accountType === 'company_admin'
-                    ? 'border-blue-600 bg-blue-50/70 text-blue-700 shadow-sm ring-1 ring-blue-500'
-                    : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
-                }`}
+                onClick={() => navigate('/register-seller')}
+                className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-purple-50 hover:border-purple-300 flex flex-col items-center justify-center gap-1.5 text-center transition-all group"
               >
-                <Building2 className="w-5 h-5 text-purple-600" />
-                <span className="text-xs font-bold">شركة / براند</span>
+                <Building2 className="w-5 h-5 text-purple-600 group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold text-slate-700">شركة / براند</span>
+                <span className="text-[10px] text-purple-600 font-semibold">انتقل للتسجيل &larr;</span>
               </button>
 
             </div>
@@ -227,11 +220,19 @@ export const Register: React.FC = () => {
             )}
           </button>
 
-          <div className="pt-4 border-t border-slate-100 text-center text-sm text-slate-600">
-            لديك حساب بالفعل؟{' '}
-            <Link to="/login" className="font-bold text-blue-600 hover:text-blue-700 hover:underline">
-              تسجيل الدخول
-            </Link>
+          <div className="pt-4 border-t border-slate-100 text-center text-sm text-slate-600 space-y-2">
+            <div>
+              لديك حساب بالفعل؟{' '}
+              <Link to="/login" className="font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                تسجيل الدخول
+              </Link>
+            </div>
+            <div className="pt-2 border-t border-slate-50 text-xs text-slate-500">
+              ترغب في بيع منتجاتك معنا؟{' '}
+              <Link to="/register-seller" className="font-bold text-indigo-600 hover:text-indigo-700 hover:underline">
+                انضم كبائع أو شركة من هنا
+              </Link>
+            </div>
           </div>
         </form>
       </div>

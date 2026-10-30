@@ -1,9 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Permission } from '../../common/enums/permission.enum';
+import { RolesEnum } from '../../common/enums/roles';
 import { Connection, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { SellerPayoutMethodRepo } from '../../models/payout/seller-payout-method.repository';
@@ -48,11 +51,12 @@ export class SellerPayoutService {
   ) {}
 
   /**
-   * Resolve sellingEntityId from explicit string or from user ownerId
+   * Resolve sellingEntityId from explicit string or from user ownerId, enforcing tenant ownership
    */
   async resolveSellingEntityId(
     sellingEntityIdOrOwnerId?: string,
     ownerId?: string,
+    currentUser?: any,
   ): Promise<Types.ObjectId> {
     if (
       sellingEntityIdOrOwnerId &&
@@ -62,6 +66,22 @@ export class SellerPayoutService {
         _id: new Types.ObjectId(sellingEntityIdOrOwnerId),
       });
       if (entity) {
+        if (currentUser) {
+          const role = (currentUser.role || '').toLowerCase();
+          const isSuperAdmin =
+            role === 'admin' ||
+            role === 'super_admin' ||
+            role === RolesEnum.SUPER_ADMIN.toLowerCase() ||
+            currentUser.permissions?.includes(Permission.PAYOUT_READ_ALL) ||
+            currentUser.permissions?.includes('payout.read_all');
+          const callerId = (currentUser.id || currentUser.sub || currentUser._id || ownerId)?.toString();
+          const isOwner =
+            (entity.primaryOwnerId && entity.primaryOwnerId.toString() === callerId) ||
+            (currentUser.sellingEntityId && currentUser.sellingEntityId.toString() === entity._id.toString());
+          if (!isSuperAdmin && !isOwner) {
+            throw new ForbiddenException('غير مصرح لك بالوصول إلى بيانات متجر آخر');
+          }
+        }
         return entity._id;
       }
     }
@@ -200,76 +220,131 @@ export class SellerPayoutService {
     platformDues: number;
     currency: string;
   }> {
-    const totalLedgerCount = await this.ledgerRepo.model.countDocuments({
-      sellingEntityId: entityId,
-    });
+    // 1. Live Aggregation Pipeline directly from LedgerEntry
+    const [ledgerAgg] = await this.ledgerRepo.model.aggregate([
+      { $match: { sellingEntityId: entityId } },
+      {
+        $group: {
+          _id: null,
+          availableOrderCredit: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$entryType', LedgerMovementTypeEnum.ORDER_CREDIT] },
+                    { $eq: ['$status', LedgerEntryStatusEnum.AVAILABLE] },
+                  ],
+                },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+          heldEscrowBalance: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$entryType', LedgerMovementTypeEnum.ORDER_CREDIT] },
+                    { $eq: ['$status', LedgerEntryStatusEnum.HELD_ESCROW] },
+                  ],
+                },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+          refundDebit: {
+            $sum: {
+              $cond: [
+                { $eq: ['$entryType', LedgerMovementTypeEnum.REFUND_DEBIT] },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+          payoutDebit: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$entryType', LedgerMovementTypeEnum.PAYOUT_DEBIT] },
+                    {
+                      $in: [
+                        '$status',
+                        [
+                          LedgerEntryStatusEnum.SETTLED,
+                          LedgerEntryStatusEnum.AVAILABLE,
+                        ],
+                      ],
+                    },
+                  ],
+                },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+          codDues: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    {
+                      $eq: [
+                        '$entryType',
+                        LedgerMovementTypeEnum.PLATFORM_FEE_DEBIT,
+                      ],
+                    },
+                    {
+                      $or: [
+                        { $eq: ['$paymentMethod', PaymentMethodEnum.COD] },
+                        {
+                          $regexMatch: {
+                            input: { $ifNull: ['$reference', ''] },
+                            regex: /^COD/i,
+                          },
+                        },
+                        {
+                          $regexMatch: {
+                            input: { $ifNull: ['$description', ''] },
+                            regex: /COD|دفع عند الاستلام|كاش/i,
+                          },
+                        },
+                      ],
+                    },
+                  ],
+                },
+                { $abs: '$amount' },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
-    // 1. Pending Escrow Balance (strict: only online payment credit entries currently HELD_ESCROW)
-    const heldEscrowEntries = await this.ledgerRepo.getAll({
-      sellingEntityId: entityId,
-      status: LedgerEntryStatusEnum.HELD_ESCROW,
-      entryType: LedgerMovementTypeEnum.ORDER_CREDIT,
-    });
+    let availableOrderCredit = ledgerAgg?.availableOrderCredit || 0;
+    let heldEscrowBalance = ledgerAgg?.heldEscrowBalance || 0;
+    const refundDebit = ledgerAgg?.refundDebit || 0;
+    const payoutDebit = ledgerAgg?.payoutDebit || 0;
+    const codDues = ledgerAgg?.codDues || 0;
 
-    let pendingBalance = 0;
-    for (const entry of heldEscrowEntries) {
-      if (entry.type === LedgerEntryTypeEnum.CREDIT) {
-        pendingBalance += Math.abs(entry.amount);
-      }
-    }
-
-    // Fallback: Check Escrow collection ONLY if no ledger entries at all exist for this entity
-    if (totalLedgerCount === 0 && heldEscrowEntries.length === 0) {
+    // Fallback: Check Escrow collection ONLY if no order credit ledger entries exist yet
+    if (availableOrderCredit === 0 && heldEscrowBalance === 0) {
       const escrows = await this.escrowRepo.getAll({
         sellingEntityId: entityId,
-        status: EscrowStatusEnum.HELD,
       });
-      pendingBalance = escrows.reduce((sum, e) => sum + (e.netAmount || 0), 0);
-    }
-    pendingBalance = Math.max(0, Math.round(pendingBalance * 100) / 100);
-
-    // 2. Gross Available Credit: only delivered online sales with status AVAILABLE
-    const availableEntries = await this.ledgerRepo.getAll({
-      sellingEntityId: entityId,
-      status: LedgerEntryStatusEnum.AVAILABLE,
-      entryType: LedgerMovementTypeEnum.ORDER_CREDIT,
-    });
-
-    let grossAvailableCredit = 0;
-    for (const entry of availableEntries) {
-      if (entry.type === LedgerEntryTypeEnum.CREDIT) {
-        grossAvailableCredit += Math.abs(entry.amount);
+      for (const e of escrows) {
+        if (e.status === EscrowStatusEnum.HELD) {
+          heldEscrowBalance += e.netAmount || 0;
+        } else if (e.status === EscrowStatusEnum.RELEASED) {
+          availableOrderCredit += e.netAmount || 0;
+        }
       }
     }
 
-    // 3. Platform Fee Debits from COD orders (cash collected directly by seller from customer)
-    const codCommissionEntries = await this.ledgerRepo.getAll({
-      sellingEntityId: entityId,
-      entryType: LedgerMovementTypeEnum.PLATFORM_FEE_DEBIT,
-      status: LedgerEntryStatusEnum.SETTLED,
-      $or: [
-        { paymentMethod: PaymentMethodEnum.COD },
-        { reference: { $regex: /^COD/i } },
-        { description: { $regex: /COD|دفع عند الاستلام|كاش/i } },
-      ],
-    });
-    const totalCodPlatformFees = codCommissionEntries.reduce(
-      (sum, e) => sum + Math.abs(e.amount),
-      0,
-    );
-
-    // 4. Settled payout debits from ledger (actual withdrawals)
-    const settledPayoutEntries = await this.ledgerRepo.getAll({
-      sellingEntityId: entityId,
-      entryType: LedgerMovementTypeEnum.PAYOUT_DEBIT,
-      status: LedgerEntryStatusEnum.SETTLED,
-    });
-    const settledDebitsSum = settledPayoutEntries.reduce(
-      (sum, e) => sum + Math.abs(e.amount),
-      0,
-    );
-
-    // 5. Pending/processing payout requests that haven't finalized
+    // Pending payout requests that haven't finalized
     const pendingPayoutRequests = await this.payoutRequestRepo.getAll({
       sellingEntityId: entityId,
       status: {
@@ -284,38 +359,23 @@ export class SellerPayoutService {
       0,
     );
 
-    // 5. Refund debits from ledger (returned order deductions)
-    const refundDebitsEntries = await this.ledgerRepo.getAll({
-      sellingEntityId: entityId,
-      entryType: LedgerMovementTypeEnum.REFUND_DEBIT,
-    });
-    const totalRefundDebits = refundDebitsEntries.reduce(
-      (sum, r) => sum + Math.abs(r.amount || 0),
-      0,
-    );
-
-    // 6. Net Available Balance and Platform Dues:
-    // Online earnings after refunds and existing withdrawals
-    const netOnlineEarnings = Math.max(
-      0,
-      grossAvailableCredit - totalRefundDebits - settledDebitsSum - pendingRequestsSum,
-    );
+    // Precise live settlement formula:
+    // Available Balance = SUM(AVAILABLE ORDER_CREDIT) - SUM(REFUND_DEBIT) - SUM(PAYOUT_DEBIT) - SUM(COD Dues)
+    const netCreditAvailable =
+      availableOrderCredit - refundDebit - payoutDebit - pendingRequestsSum;
 
     let availableBalance = 0;
     let platformDues = 0;
 
-    if (netOnlineEarnings >= totalCodPlatformFees) {
-      availableBalance = netOnlineEarnings - totalCodPlatformFees;
+    if (netCreditAvailable >= codDues) {
+      availableBalance = netCreditAvailable - codDues;
       platformDues = 0;
     } else {
       availableBalance = 0;
-      platformDues = totalCodPlatformFees - netOnlineEarnings;
+      platformDues = codDues - Math.max(0, netCreditAvailable);
     }
 
-    availableBalance = Math.round(availableBalance * 100) / 100;
-    platformDues = Math.round(platformDues * 100) / 100;
-
-    // 7. Withdrawn Balance (settled/completed payouts)
+    // Completed payouts for total withdrawn balance
     const completedPayouts = await this.payoutRequestRepo.getAll({
       sellingEntityId: entityId,
       status: PayoutRequestStatusEnum.COMPLETED,
@@ -324,17 +384,13 @@ export class SellerPayoutService {
       (sum, p) => sum + (p.amount || 0),
       0,
     );
-
-    const withdrawnBalance = Math.max(
-      settledDebitsSum,
-      withdrawnFromRequests,
-    );
+    const withdrawnBalance = Math.max(payoutDebit, withdrawnFromRequests);
 
     return {
-      pendingBalance,
-      availableBalance,
+      pendingBalance: Math.max(0, Math.round(heldEscrowBalance * 100) / 100),
+      availableBalance: Math.max(0, Math.round(availableBalance * 100) / 100),
       withdrawnBalance: Math.round(withdrawnBalance * 100) / 100,
-      platformDues,
+      platformDues: Math.round(platformDues * 100) / 100,
       currency: 'EGP',
     };
   }
@@ -386,6 +442,18 @@ export class SellerPayoutService {
   }
 
   /**
+   * Get paginated ledger movements (alias for getLedger)
+   */
+  async getLedgerHistory(
+    entityId: Types.ObjectId,
+    page: number = 1,
+    limit: number = 20,
+    status?: string,
+  ) {
+    return this.getLedger(entityId, page, limit, status);
+  }
+
+  /**
    * Request payout with validation and simulation
    */
   async requestPayout(
@@ -417,6 +485,21 @@ export class SellerPayoutService {
     if (!payoutMethod) {
       throw new NotFoundException(
         'وسيلة السحب المحددة غير مسجلة أو غير تابعة لهذا المتجر',
+      );
+    }
+
+    const activePending = await this.payoutRequestRepo.getOne({
+      sellingEntityId: entityId,
+      status: {
+        $in: [
+          PayoutRequestStatusEnum.PENDING,
+          PayoutRequestStatusEnum.PROCESSING,
+        ],
+      },
+    });
+    if (activePending) {
+      throw new BadRequestException(
+        'يوجد طلب سحب أرباح قيد المعالجة حالياً. يرجى الانتظار حتى اكتمال الطلب السابق',
       );
     }
 
@@ -502,6 +585,97 @@ export class SellerPayoutService {
       .sort({ createdAt: -1 })
       .lean()
       .exec();
+  }
+
+  /**
+   * Process payout request (Admin Action: Approve / Reject)
+   */
+  async processPayout(
+    payoutRequestId: string | Types.ObjectId,
+    action: 'APPROVE' | 'REJECT',
+    notes?: string,
+  ): Promise<{
+    success: boolean;
+    message: string;
+    payoutRequest: PayoutRequest;
+  }> {
+    const pId =
+      typeof payoutRequestId === 'string'
+        ? new Types.ObjectId(payoutRequestId)
+        : payoutRequestId;
+
+    const payout = await this.payoutRequestRepo.getOne({ _id: pId });
+    if (!payout) {
+      throw new NotFoundException('طلب السحب غير موجود');
+    }
+
+    if (
+      payout.status !== PayoutRequestStatusEnum.PENDING &&
+      payout.status !== PayoutRequestStatusEnum.PROCESSING
+    ) {
+      throw new BadRequestException(
+        'لا يمكن معالجة هذا الطلب لأنه مكتمل أو مرفوض بالفعل',
+      );
+    }
+
+    if (action === 'APPROVE') {
+      await this.payoutRequestRepo.updateOne(
+        { _id: pId },
+        {
+          status: PayoutRequestStatusEnum.COMPLETED,
+          processedAt: new Date(),
+          adminNotes: notes,
+        },
+      );
+
+      // Settle ledger entry upon approval
+      if (payout.gatewayReference) {
+        await this.ledgerRepo.model.updateOne(
+          {
+            reference: payout.gatewayReference,
+            entryType: LedgerMovementTypeEnum.PAYOUT_DEBIT,
+          },
+          {
+            $set: { status: LedgerEntryStatusEnum.SETTLED },
+          },
+        );
+      }
+
+      return {
+        success: true,
+        message: 'تمت الموافقة على طلب السحب بنجاح',
+        payoutRequest: (await this.payoutRequestRepo.getOne({ _id: pId }))!,
+      };
+    } else {
+      // REJECT
+      await this.payoutRequestRepo.updateOne(
+        { _id: pId },
+        {
+          status: PayoutRequestStatusEnum.REJECTED,
+          processedAt: new Date(),
+          adminNotes: notes,
+        },
+      );
+
+      // Create REVERSAL_CREDIT ledger entry upon rejection
+      await this.ledgerRepo.create({
+        sellingEntityId: payout.sellingEntityId,
+        entryType: LedgerMovementTypeEnum.ORDER_CREDIT,
+        account: LedgerAccountEnum.VENDOR_PAYABLE,
+        type: LedgerEntryTypeEnum.CREDIT,
+        amount: payout.amount,
+        currency: 'EGP',
+        status: LedgerEntryStatusEnum.AVAILABLE,
+        reference: `REV-${payout.gatewayReference || pId.toString()}`,
+        description: `استرداد وإلغاء طلب السحب المرفوض: ${notes || ''}`,
+      });
+
+      return {
+        success: true,
+        message: 'تم رفض طلب السحب وإعادة الرصيد إلى محفظة البائع',
+        payoutRequest: (await this.payoutRequestRepo.getOne({ _id: pId }))!,
+      };
+    }
   }
 }
 

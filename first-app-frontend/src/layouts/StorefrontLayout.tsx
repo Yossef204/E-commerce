@@ -28,7 +28,18 @@ export const StorefrontLayout: React.FC = () => {
 
   const cartCount = useCartStore((state) => state.getTotalItems());
 
+  // إخفاء أيقونة السلة عن الأدوار الإدارية والتجارية (تظهر للزوار والعملاء فقط)
+  const normalizedRole = (user?.role || '').toUpperCase();
+  const isManagementRole = Boolean(
+    isAuthenticated &&
+      ['ADMIN', 'SUPER_ADMIN', 'SELLER', 'COMPANY_ADMIN', 'ADMIN_STAFF'].includes(
+        normalizedRole,
+      ),
+  );
+  const showCart = !isManagementRole;
+
   const handleLogout = () => {
+    useCartStore.getState().resetCart();
     clearAuth();
     navigate('/login');
   };
@@ -84,19 +95,21 @@ export const StorefrontLayout: React.FC = () => {
 
             {/* Right Nav Options */}
             <div className="flex items-center gap-3">
-              {/* Cart Button */}
-              <button
-                onClick={() => setIsCartDrawerOpen(true)}
-                className="relative p-2.5 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-                title="سلة المشتريات"
-              >
-                <ShoppingCart className="w-6 h-6" />
-                {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
-                    {cartCount}
-                  </span>
-                )}
-              </button>
+              {/* Cart Button (Visible only to Guests and Customers) */}
+              {showCart && (
+                <button
+                  onClick={() => setIsCartDrawerOpen(true)}
+                  className="relative p-2.5 text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+                  title="سلة المشتريات"
+                >
+                  <ShoppingCart className="w-6 h-6" />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white animate-pulse">
+                      {cartCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* User Account Dropdown / Actions */}
               {isAuthenticated && user ? (
@@ -221,16 +234,18 @@ export const StorefrontLayout: React.FC = () => {
                     <Package className="w-4 h-4 text-blue-600" />
                     <span>طلباتي</span>
                   </Link>
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      setIsCartDrawerOpen(true);
-                    }}
-                    className="text-right px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2"
-                  >
-                    <ShoppingCart className="w-4 h-4 text-blue-600" />
-                    <span>سلة المشتريات ({cartCount})</span>
-                  </button>
+                  {showCart && (
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsCartDrawerOpen(true);
+                      }}
+                      className="text-right px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2"
+                    >
+                      <ShoppingCart className="w-4 h-4 text-blue-600" />
+                      <span>سلة المشتريات ({cartCount})</span>
+                    </button>
+                  )}
                   <Link to="/vendor" className="px-3 py-2 rounded-lg hover:bg-slate-100">
                     لوحة البائع
                   </Link>
@@ -268,8 +283,13 @@ export const StorefrontLayout: React.FC = () => {
         <Outlet />
       </main>
 
-      {/* Reactive Cart Drawer */}
-      <CartDrawer isOpen={isCartDrawerOpen} onClose={() => setIsCartDrawerOpen(false)} />
+      {/* Reactive Cart Drawer (Visible only to Guests and Customers) */}
+      {showCart && (
+        <CartDrawer
+          isOpen={isCartDrawerOpen}
+          onClose={() => setIsCartDrawerOpen(false)}
+        />
+      )}
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 text-sm border-t border-slate-800 mt-auto">

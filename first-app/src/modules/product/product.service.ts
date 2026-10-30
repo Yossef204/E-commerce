@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { ProductRepo } from '../../models/product/product.repository';
@@ -11,6 +12,8 @@ import { InventoryRepo } from '../../models/inventory/inventory.repository';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
 import { UserRepo } from '../../models/user/user.repository';
 import { BrandRepo } from '../../models/brand/brand.repository';
+import { CategoryRepo } from '../../models/category/category.repository';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ProductFactory } from './factory/product.factory';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -19,6 +22,7 @@ import { UpdateInventoryDto } from './dto/update-inventory.dto';
 import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-status.enum';
 import { EntityStatusEnum } from '../../common/enums/entity-status.enum';
 import { normalizeImageUrl } from '../storefront/mappers/product.mapper';
+import { Permission } from '../../common/enums/permission.enum';
 
 @Injectable()
 export class ProductService {
@@ -29,6 +33,8 @@ export class ProductService {
     private readonly userRepo: UserRepo,
     private readonly brandRepo: BrandRepo,
     private readonly productFactory: ProductFactory,
+    @Optional() private readonly categoryRepo?: CategoryRepo,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
   ) {}
 
   async createProduct(userContext: any, createProductDto: CreateProductDto) {
@@ -85,6 +91,23 @@ export class ProductService {
       throw new ForbiddenException(
         'Selling entity must be APPROVED or ACTIVE to register products',
       );
+    }
+
+    if (!createProductDto.categoryId) {
+      throw new BadRequestException('Category ID is required');
+    }
+
+    if (!Types.ObjectId.isValid(createProductDto.categoryId)) {
+      throw new BadRequestException('Invalid category ID format');
+    }
+
+    if (this.categoryRepo) {
+      const category = await this.categoryRepo.getOne({
+        _id: new Types.ObjectId(createProductDto.categoryId),
+      });
+      if (!category) {
+        throw new BadRequestException('Category does not exist');
+      }
     }
 
     if (createProductDto.brandId) {
@@ -211,16 +234,35 @@ export class ProductService {
       );
     }
 
+    const isApproved = approvalStatus === ProductApprovalStatusEnum.APPROVED;
+    const isRejected = approvalStatus === ProductApprovalStatusEnum.REJECTED;
+
+    const updateFields: any = {
+      approvalStatus: approvalStatus,
+      rejectionReason:
+        isRejected ? updateApprovalDto.rejectionReason.trim() : null,
+    };
+
+    if (isApproved) {
+      updateFields.isActive = true;
+      updateFields.status = 'ACTIVE';
+    } else if (isRejected) {
+      updateFields.isActive = false;
+      updateFields.status = 'INACTIVE';
+    }
+
     const updatedProduct = await this.productRepo.updateOne(
       { _id: product._id },
-      {
-        approvalStatus: approvalStatus,
-        rejectionReason:
-          approvalStatus === ProductApprovalStatusEnum.REJECTED
-            ? updateApprovalDto.rejectionReason.trim()
-            : null,
-      },
+      updateFields,
     );
+
+    if (this.eventEmitter) {
+      this.eventEmitter.emit('product.approval_updated', {
+        productId: product._id,
+        approvalStatus,
+        rejectionReason: updateFields.rejectionReason,
+      });
+    }
 
     return {
       message: `Product approval status updated to ${approvalStatus}`,
@@ -455,8 +497,144 @@ export class ProductService {
     };
   }
 
+  async assertProductOwnership(product: any, userContext: any): Promise<void> {
+    if (!userContext) {
+      throw new ForbiddenException('Authentication required to modify products');
+    }
+
+    let roleUpper = '';
+    let userSellingEntityId: string | null = null;
+    let userId: string | null = null;
+    let userPermissions: string[] = [];
+
+    if (typeof userContext === 'object') {
+      roleUpper = (userContext.role || '').toUpperCase().trim();
+      userSellingEntityId = userContext.sellingEntityId
+        ? userContext.sellingEntityId.toString()
+        : null;
+      userId = (
+        userContext.id ||
+        userContext.sub ||
+        userContext._id
+      )?.toString() || null;
+      userPermissions = Array.isArray(userContext.permissions)
+        ? userContext.permissions
+        : [];
+    } else {
+      userId = String(userContext);
+    }
+
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleUpper === 'SUPERADMIN';
+    const isAdmin =
+      roleUpper === 'ADMIN' &&
+      (userPermissions.includes(Permission.PRODUCT_UPDATE) ||
+        userPermissions.includes(Permission.PRODUCT_DELETE) ||
+        userPermissions.includes(Permission.PRODUCT_APPROVE) ||
+        userPermissions.includes('products.update') ||
+        userPermissions.includes('products.delete') ||
+        userPermissions.includes('products.approve'));
+
+    if (isSuperAdmin || isAdmin) {
+      return; // Platform admin bypasses multi-tenant scoping
+    }
+
+    const productEntityId = product.sellingEntityId?.toString();
+
+    // 1. Direct match on sellingEntityId
+    if (
+      userSellingEntityId &&
+      productEntityId &&
+      userSellingEntityId === productEntityId
+    ) {
+      return;
+    }
+
+    // 2. Fallback check: check if userId owns the product's selling entity
+    if (userId && productEntityId) {
+      const sellingEntity = await this.sellingEntityRepo.getOne({
+        _id: new Types.ObjectId(productEntityId),
+      });
+      if (
+        sellingEntity &&
+        sellingEntity.primaryOwnerId &&
+        sellingEntity.primaryOwnerId.toString() === userId
+      ) {
+        return;
+      }
+    }
+
+    throw new ForbiddenException(
+      'Access denied: You cannot modify or delete a product belonging to another commercial entity',
+    );
+  }
+
+  async updateProduct(
+    id: string,
+    updateProductDto: UpdateProductDto,
+    userContext: any,
+  ) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid product ID format');
+    }
+    const product = await this.productRepo.getOne({
+      _id: new Types.ObjectId(id),
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    await this.assertProductOwnership(product, userContext);
+
+    const updateData: any = {};
+    if (updateProductDto.title) updateData.title = updateProductDto.title;
+    if (updateProductDto.description)
+      updateData.description = updateProductDto.description;
+    if (updateProductDto.categoryId)
+      updateData.categoryId = new Types.ObjectId(updateProductDto.categoryId);
+    if (updateProductDto.brandId)
+      updateData.brandId = new Types.ObjectId(updateProductDto.brandId);
+    if (updateProductDto.variants)
+      updateData.variants = updateProductDto.variants;
+
+    // Resets approval status to pending if updated by seller
+    updateData.approvalStatus = ProductApprovalStatusEnum.PENDING_APPROVAL;
+
+    const updated = await this.productRepo.updateOne(
+      { _id: new Types.ObjectId(id) },
+      { $set: updateData },
+    );
+
+    return {
+      message: 'Product updated successfully and submitted for approval',
+      data: updated,
+    };
+  }
+
+  async deleteProduct(id: string, userContext: any) {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid product ID format');
+    }
+    const product = await this.productRepo.getOne({
+      _id: new Types.ObjectId(id),
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    await this.assertProductOwnership(product, userContext);
+
+    await this.productRepo.deleteOne({ _id: new Types.ObjectId(id) });
+
+    return {
+      success: true,
+      message: 'Product deleted successfully',
+    };
+  }
+
   async updateInventoryStock(
-    ownerIdStr: string,
+    userContext: any,
     updateInventoryDto: UpdateInventoryDto,
   ) {
     const { sku, quantity, operation } = updateInventoryDto;
@@ -471,16 +649,10 @@ export class ProductService {
       throw new NotFoundException('Associated product not found');
     }
 
-    const sellingEntity = await this.sellingEntityRepo.getOne({
-      _id: product.sellingEntityId,
-    });
-    if (
-      !sellingEntity ||
-      sellingEntity.primaryOwnerId.toString() !== ownerIdStr
-    ) {
-      throw new ForbiddenException(
-        'Access denied: You do not own this product inventory',
-      );
+    await this.assertProductOwnership(product, userContext);
+
+    if (quantity < 0) {
+      throw new BadRequestException('Stock quantity cannot be negative');
     }
 
     let newAvailableStock = inventory.availableStock;
@@ -490,10 +662,23 @@ export class ProductService {
       newAvailableStock = quantity;
     }
 
+    if (newAvailableStock < 0) {
+      throw new BadRequestException(
+        'Resulting available stock cannot be negative',
+      );
+    }
+
     const updatedInventory = await this.inventoryRepo.updateOne(
       { _id: inventory._id },
       { availableStock: newAvailableStock },
     );
+
+    if (this.eventEmitter) {
+      this.eventEmitter.emit('inventory.stock_updated', {
+        sku,
+        availableStock: newAvailableStock,
+      });
+    }
 
     return {
       message: 'Inventory stock updated successfully',

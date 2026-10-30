@@ -32,7 +32,10 @@ import { join } from 'path';
 import { StorefrontModule } from './modules/storefront/storefront.module';
 import { DataloaderModule } from './modules/storefront/dataloader/dataloader.module';
 import { DataloaderService } from './modules/storefront/dataloader/dataloader.service';
+import { AuthenticationGuard } from './common/guards/authentication.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CartModule } from './modules/cart/cart.module';
 
 @Module({
   imports: [
@@ -92,10 +95,16 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     SellerPayoutModule,
     ReturnModule,
     ReviewModule,
+    DashboardModule,
+    CartModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: AuthenticationGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,

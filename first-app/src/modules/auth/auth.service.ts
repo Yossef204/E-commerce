@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { RegisterAuthDto } from './dto/register-auth.dto';
+import { RegisterSellerAuthDto } from './dto/register-seller-auth.dto';
 import { LoginAuthDto } from './dto/login-auth.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -25,9 +26,13 @@ import { MailService } from '../../shared/mailer/mail.service';
 import { ConfigService } from '@nestjs/config';
 import { RolesEnum } from '../../common/enums/roles';
 import { AccountStatusEnum } from '../../common/enums/account-status';
+import { EntityStatusEnum } from '../../common/enums/entity-status.enum';
+import { EntityTypeEnum } from '../../common/enums/entity-type.enum';
 import { PermissionRepo } from '../../models/permission/permission.repository';
 import { getDefaultPermissionsForRole } from '../../common/enums/permissions.enum';
+import { normalizePermissions } from '../../common/utils/permission-normalizer.util';
 import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.repository';
+import { Types } from 'mongoose';
 
 @Injectable()
 export class AuthService {
@@ -45,8 +50,114 @@ export class AuthService {
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
+  async getUserTokenVersion(userId: string): Promise<number> {
+    try {
+      const key = `auth:token_version:${userId}`;
+      const version = await Promise.race([
+        this.cacheManager.get<number | string>(key),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Redis Timeout')), 300),
+        ),
+      ]);
+      if (version === null || version === undefined) {
+        return 1;
+      }
+      return Number(version) || 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  async generateTokens(user: any, extraPayload: any = {}) {
+    const userId = user._id || user.id;
+    const userIdStr = userId ? userId.toString() : '';
+    console.log('--> 6.1: Starting generateTokens for user:', userIdStr);
+
+    console.log('--> 6.2: Fetching tokenVersion from Redis...');
+    let tokenVersion = 1;
+    try {
+      const fetched = await Promise.race([
+        this.cacheManager.get(`auth:token_version:${userIdStr}`),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis Timeout')), 300),
+        ),
+      ]);
+      tokenVersion = Number(fetched) || 1;
+      console.log('--> 6.3: Token version fetched:', tokenVersion);
+    } catch (err) {
+      console.warn('--> 6.3: Redis skipped (Timeout or Error), fallback tokenVersion = 1');
+      tokenVersion = 1;
+    }
+
+    const jwtSecret =
+      this.configService.get<string>('JWT_SECRET') ||
+      this.configService.get<any>('jwt')?.accessSecret ||
+      this.configService.get<string>('jwt.accessSecret') ||
+      process.env.ACCESS_TOKEN_SECRET ||
+      'default_jwt_secret_fallback';
+
+    console.log('--> 6.4: Signing Access Token...');
+    const accessPayload = {
+      id: userIdStr,
+      sub: userIdStr,
+      email: user.email,
+      role: user.role,
+      sellingEntityId:
+        extraPayload?.sellingEntityId ||
+        (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
+      entityStatus: extraPayload?.entityStatus || undefined,
+      permissions: extraPayload?.permissions || [],
+      tokenVersion,
+    };
+
+    const accessToken = await this.jwtService.signAsync(accessPayload, {
+      secret: jwtSecret,
+      expiresIn: '1d',
+    });
+
+    console.log('--> 6.5: Signing Refresh Token...');
+    const refreshPayload = {
+      id: userIdStr,
+      sub: userIdStr,
+      tokenVersion,
+    };
+
+    const refreshToken = await this.jwtService.signAsync(refreshPayload, {
+      secret: jwtSecret,
+      expiresIn: '7d',
+    });
+
+    console.log('--> 6.6: Tokens generated successfully');
+    return { accessToken, refreshToken, tokenVersion };
+  }
+
+  async invalidateUserToken(userId: string): Promise<void> {
+    try {
+      const key = `auth:token_version:${userId}`;
+      const store = (this.cacheManager as any)?.store;
+      await Promise.race([
+        (async () => {
+          if (store?.client?.incr) {
+            await store.client.incr(key);
+          } else {
+            const current = (await this.getUserTokenVersion(userId)) || 1;
+            await this.cacheManager.set(key, Number(current) + 1);
+          }
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Redis Timeout')), 500),
+        ),
+      ]);
+      this.logger.log(`Token version incremented in Redis for user: ${userId}`);
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to increment token version in Redis for ${userId}: ${err?.message}`,
+      );
+    }
+  }
+
   async register(registerAuthDto: RegisterAuthDto ) {
-    const { userName, email, password, phoneNumber, role } = registerAuthDto;
+    const { userName, email, password, phoneNumber } = registerAuthDto;
 
     const existingUser = await this.userRepo.getOne({
       email: email.toLowerCase(),
@@ -62,13 +173,7 @@ export class AuthService {
     const otpHash = await bcrypt.hash(otp, saltRounds);
     const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes TTL
 
-    let userRole: RolesEnum = RolesEnum.CUSTOMER; // Default role
-    if(role){
-      if (!Object.values(RolesEnum).includes(role)) {
-        throw new BadRequestException('Invalid role specified');
-      }
-      userRole = role;
-    }
+    const userRole: RolesEnum = RolesEnum.CUSTOMER;
     const createdUser = await this.userRepo.create({
       userName,
       email: email.toLowerCase(),
@@ -85,8 +190,11 @@ export class AuthService {
       ? createdUser._id.toString()
       : (createdUser as any).id;
     if (userId) {
-      const defaultPerms = getDefaultPermissionsForRole(userRole);
-      await this.permissionRepo.upsertUserPermissions(userId, defaultPerms);
+      const defaultPerms = normalizePermissions(
+        getDefaultPermissionsForRole(userRole),
+        userRole,
+      );
+      await this.permissionRepo.upsertUserPermissions(userId, [...defaultPerms]);
     }
 
     await this.mailService.send({
@@ -110,6 +218,146 @@ export class AuthService {
       message:
         'User registered successfully. Please verify your email using the OTP sent.',
       user: userResponse,
+    };
+  }
+
+  async registerSeller(dto: RegisterSellerAuthDto) {
+    const {
+      userName,
+      email,
+      password,
+      phoneNumber,
+      role,
+      storeName,
+      description,
+      businessType,
+      taxOrCommercialNumber,
+      documentUrl,
+    } = dto;
+
+    // 1. فحص عدم تكرار البريد التجاري
+    const existingUser = await this.userRepo.getOne({
+      email: email.toLowerCase(),
+    });
+    if (existingUser) {
+      throw new ConflictException('البريد الإلكتروني مستخدم بالفعل');
+    }
+
+    // 2. فحص عدم تكرار اسم المتجر
+    const trimmedStoreName = storeName.trim();
+    const existingEntity = await this.sellingEntityRepo.getOne({
+      $or: [
+        { legalName: { $regex: new RegExp(`^${trimmedStoreName}$`, 'i') } },
+        { tradeName: { $regex: new RegExp(`^${trimmedStoreName}$`, 'i') } },
+      ],
+    });
+    if (existingEntity) {
+      throw new ConflictException('اسم المتجر مستخدم بالفعل');
+    }
+
+    // 3. تحديد الدور ونوع الكيان التجاري
+    const normalizedRole: RolesEnum =
+      role === RolesEnum.COMPANY_ADMIN ||
+      (role as string)?.toLowerCase() === 'company_admin'
+        ? RolesEnum.COMPANY_ADMIN
+        : RolesEnum.SELLER;
+
+    const entityType: EntityTypeEnum = businessType
+      ? businessType.toUpperCase() === 'COMPANY'
+        ? EntityTypeEnum.COMPANY
+        : EntityTypeEnum.INDEPENDENT_SELLER
+      : normalizedRole === RolesEnum.COMPANY_ADMIN
+        ? EntityTypeEnum.COMPANY
+        : EntityTypeEnum.INDEPENDENT_SELLER;
+
+    // 4. تشفير كلمة المرور وتوليد OTP
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpHash = await bcrypt.hash(otp, saltRounds);
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    const targetUserId = new Types.ObjectId();
+
+    // 5. إنشاء كائن SellingEntity بحالة PENDING_APPROVAL
+    const sellingEntity = await this.sellingEntityRepo.create({
+      legalName: trimmedStoreName,
+      tradeName: trimmedStoreName,
+      type: entityType,
+      status: EntityStatusEnum.PENDING_APPROVAL,
+      primaryOwnerId: targetUserId,
+      description: description || null,
+      documentUrl: documentUrl || null,
+      businessDetails: {
+        taxNumber: taxOrCommercialNumber,
+        commercialRegister: taxOrCommercialNumber,
+        phone: phoneNumber,
+        address: description || null,
+      },
+      commissionPercentage: 10,
+      commissionFixedFee: 0,
+    });
+
+    // 6. إنشاء المستخدم وربطه بالـ sellingEntityId
+    const createdUser = await this.userRepo.create({
+      _id: targetUserId,
+      userName,
+      email: email.toLowerCase(),
+      phoneNumber,
+      password: hashedPassword,
+      role: normalizedRole,
+      status: AccountStatusEnum.ACTIVE,
+      isEmailVerified: false,
+      emailVerificationOtpHash: otpHash,
+      emailVerificationOtpExpiresAt: otpExpiresAt,
+      sellingEntityId: sellingEntity._id,
+    });
+
+    const actualUserId = createdUser._id || targetUserId;
+
+    // 7. ربط الكيان التجاري بالمستخدم الفعلي كـ primaryOwnerId
+    await this.sellingEntityRepo.updateOne(
+      { _id: sellingEntity._id },
+      { primaryOwnerId: actualUserId },
+    );
+
+    // 8. حقن الصلاحيات الافتراضية للدور
+    const defaultPerms = normalizePermissions(
+      getDefaultPermissionsForRole(normalizedRole),
+      normalizedRole,
+    );
+    await this.permissionRepo.upsertUserPermissions(
+      actualUserId.toString(),
+      [...defaultPerms],
+    );
+
+    // 9. إرسال بريد الـ OTP للتحقق
+    await this.mailService.send({
+      to: email,
+      subject: 'تأكيد التسجيل كبائع / شركة - رمز التحقق',
+      html: `<p>مرحباً <strong>${userName}</strong>،</p><p>رمز التحقق الخاص بك لتفعيل متجر <strong>${trimmedStoreName}</strong> هو: <strong>${otp}</strong></p><p>ينتهي هذا الرمز خلال 10 دقائق.</p>`,
+    });
+
+    const rawUser = (createdUser as any).toObject
+      ? (createdUser as any).toObject()
+      : createdUser;
+
+    const {
+      password: _,
+      emailVerificationOtpHash: __,
+      emailVerificationOtpExpiresAt: ___,
+      ...userResponse
+    } = rawUser;
+
+    return {
+      message:
+        'تم تسجيل المتجر بنجاح. يرجى تأكيد البريد الإلكتروني باستخدام رمز التحقق المرسل.',
+      user: userResponse,
+      sellingEntity: {
+        id: sellingEntity._id,
+        storeName: trimmedStoreName,
+        status: EntityStatusEnum.PENDING_APPROVAL,
+      },
     };
   }
 
@@ -166,25 +414,28 @@ export class AuthService {
 
     const userId = user._id.toString();
     const existingPermsDoc = await this.permissionRepo.getOne({ userId });
-    const defaultPerms = (getDefaultPermissionsForRole(user.role || RolesEnum.CUSTOMER) as string[]) || [];
+    const defaultPerms = getDefaultPermissionsForRole(user.role || RolesEnum.CUSTOMER);
     const existingPerms =
       existingPermsDoc?.permissions &&
       Array.isArray(existingPermsDoc.permissions)
         ? existingPermsDoc.permissions
         : [];
-    const userPermissions: string[] = Array.from(
-      new Set([...existingPerms, ...defaultPerms]),
+    const normalized = normalizePermissions(
+      [...existingPerms, ...defaultPerms],
+      user.role,
     );
+    const userPermissions: string[] = [...normalized];
 
-    if (
+    const needsDbSync =
       !existingPermsDoc ||
-      defaultPerms.some((p) => !existingPerms.includes(p))
-    ) {
-      try {
-        await this.permissionRepo.upsertUserPermissions(userId, userPermissions);
-      } catch {
-        // non-blocking
-      }
+      normalized.hasChanges ||
+      normalized.length !== existingPerms.length ||
+      normalized.some((p) => !existingPerms.includes(p));
+
+    if (needsDbSync) {
+      this.permissionRepo
+        .upsertUserPermissions(userId, userPermissions)
+        .catch(() => {});
     }
 
     let sellingEntityId: string | null = null;
@@ -224,25 +475,10 @@ export class AuthService {
       }
     }
 
-    const payload = {
-      sub: userId,
-      email: user.email,
-      role: user.role,
-      sellingEntityId:
-        sellingEntityId ||
-        (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
-      entityStatus: entityStatus || undefined,
+    const { accessToken, refreshToken } = await this.generateTokens(user, {
+      sellingEntityId,
+      entityStatus,
       permissions: userPermissions,
-    };
-
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '15m',
-    });
-
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '7d',
     });
 
     const refreshTokenHash = await bcrypt.hash(refreshToken, 10);
@@ -318,25 +554,32 @@ export class AuthService {
       const userPermissionsDoc = await this.permissionRepo.getOne({
         userId: userIdStr,
       });
-      const defaultPerms = (getDefaultPermissionsForRole(user.role) as string[]) || [];
+      const defaultPerms = getDefaultPermissionsForRole(user.role);
       const existingPerms =
         userPermissionsDoc?.permissions &&
         Array.isArray(userPermissionsDoc.permissions)
           ? userPermissionsDoc.permissions
           : [];
-      userPermissions = Array.from(
-        new Set([...existingPerms, ...defaultPerms]),
+      const normalized = normalizePermissions(
+        [...existingPerms, ...defaultPerms],
+        user.role,
       );
+      userPermissions = [...normalized];
 
-      if (
+      const needsDbSync =
         !userPermissionsDoc ||
-        defaultPerms.some((p) => !existingPerms.includes(p))
-      ) {
-        this.permissionRepo.upsertUserPermissions(userIdStr, userPermissions).catch(() => {});
+        normalized.hasChanges ||
+        normalized.length !== existingPerms.length ||
+        normalized.some((p) => !existingPerms.includes(p));
+
+      if (needsDbSync) {
+        this.permissionRepo
+          .upsertUserPermissions(userIdStr, userPermissions)
+          .catch(() => {});
       }
     } catch (err: any) {
       console.log('[AUTH LOGIN] Warning during permissions query/upsert:', err?.message);
-      userPermissions = (getDefaultPermissionsForRole(user.role) as string[]) || [];
+      userPermissions = [...normalizePermissions(getDefaultPermissionsForRole(user.role), user.role)];
     }
     console.log('[AUTH LOGIN] 4. Permissions resolved successfully. Count:', userPermissions.length);
 
@@ -384,25 +627,12 @@ export class AuthService {
     console.log('[AUTH LOGIN] 5. Selling entity checked. ID:', sellingEntityId, 'Status:', entityStatus);
 
     console.log('[AUTH LOGIN] 6. Generating JWT tokens...');
-    const payload = {
-      sub: userIdStr,
-      email: user.email,
-      role: user.role,
+    const { accessToken, refreshToken } = await this.generateTokens(user, {
       sellingEntityId:
         sellingEntityId ||
         (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
       entityStatus: entityStatus || undefined,
       permissions: userPermissions,
-    };
-
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '15m',
-    });
-
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '7d',
     });
     console.log('[AUTH LOGIN] 6. Tokens generated successfully');
 
@@ -456,22 +686,36 @@ export class AuthService {
   async refreshToken(refreshTokenDto: RefreshTokenDto) {
     const { refreshToken, deviceInfo, ipAddress } = refreshTokenDto;
 
+    const jwtSecret =
+      this.configService.get<string>('JWT_SECRET') ||
+      this.configService.get<any>('jwt')?.accessSecret ||
+      this.configService.get<string>('jwt.accessSecret') ||
+      process.env.ACCESS_TOKEN_SECRET ||
+      'default_jwt_secret_fallback';
+
     let payload: any;
     try {
       payload = this.jwtService.verify(refreshToken, {
-        secret: this.configService.get<string>('jwt.accessSecret'),
+        secret: jwtSecret,
       });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    const user = await this.userRepo.getOne({ _id: payload.sub });
+    const user = await this.userRepo.getOne({ _id: payload.sub || payload.id });
     if (
       !user ||
       !user._id ||
       (user.status && user.status !== AccountStatusEnum.ACTIVE)
     ) {
       throw new ForbiddenException('User account is inactive or deleted');
+    }
+
+    if (payload.tokenVersion) {
+      const currentTokenVersion = await this.getUserTokenVersion(user._id.toString());
+      if (Number(payload.tokenVersion) < Number(currentTokenVersion)) {
+        throw new UnauthorizedException('Session is invalid or has been revoked');
+      }
     }
 
     const activeSessions = await this.sessionRepo.getAll({
@@ -505,25 +749,28 @@ export class AuthService {
     const userPermissionsDoc = await this.permissionRepo.getOne({
       userId: userIdStr,
     });
-    const defaultPerms = (getDefaultPermissionsForRole(user.role) as string[]) || [];
+    const defaultPerms = getDefaultPermissionsForRole(user.role);
     const existingPerms =
       userPermissionsDoc?.permissions &&
       Array.isArray(userPermissionsDoc.permissions)
         ? userPermissionsDoc.permissions
         : [];
-    const userPermissions: string[] = Array.from(
-      new Set([...existingPerms, ...defaultPerms]),
+    const normalized = normalizePermissions(
+      [...existingPerms, ...defaultPerms],
+      user.role,
     );
+    const userPermissions: string[] = [...normalized];
 
-    if (
+    const needsDbSync =
       !userPermissionsDoc ||
-      defaultPerms.some((p) => !existingPerms.includes(p))
-    ) {
-      try {
-        await this.permissionRepo.upsertUserPermissions(userIdStr, userPermissions);
-      } catch {
-        // non-blocking
-      }
+      normalized.hasChanges ||
+      normalized.length !== existingPerms.length ||
+      normalized.some((p) => !existingPerms.includes(p));
+
+    if (needsDbSync) {
+      this.permissionRepo
+        .upsertUserPermissions(userIdStr, userPermissions)
+        .catch(() => {});
     }
 
     let sellingEntityId: string | null = null;
@@ -564,26 +811,14 @@ export class AuthService {
     }
 
     // Generate new Access and Refresh tokens with updated permissions and claims
-    const newPayload = {
-      sub: userIdStr,
-      email: user.email,
-      role: user.role,
-      sellingEntityId:
-        sellingEntityId ||
-        (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
-      entityStatus: entityStatus || undefined,
-      permissions: userPermissions,
-    };
-
-    const newAccessToken = this.jwtService.sign(newPayload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '15m',
-    });
-
-    const newRefreshToken = this.jwtService.sign(newPayload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: '7d',
-    });
+    const { accessToken: newAccessToken, refreshToken: newRefreshToken } =
+      await this.generateTokens(user, {
+        sellingEntityId:
+          sellingEntityId ||
+          (user.sellingEntityId ? user.sellingEntityId.toString() : undefined),
+        entityStatus: entityStatus || undefined,
+        permissions: userPermissions,
+      });
 
     const newRefreshTokenHash = await bcrypt.hash(newRefreshToken, 10);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

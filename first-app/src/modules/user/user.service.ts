@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   Logger,
@@ -60,13 +61,28 @@ export class UserService {
 
   /**
    * تحديث بيانات الملف الشخصي (الاسم، الهاتف، العناوين)
+   * يضمن حصر التعديل على هوية المستخدم الموثقة حصراً ومنع IDOR
    */
-  async updateProfile(userId: string, dto: UpdateProfileDto) {
+  async updateProfile(userId: string, dto: UpdateProfileDto | any, currentUser?: any) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('معرف المستخدم غير صالح');
     }
 
     const objectId = new Types.ObjectId(userId);
+
+    // Reject tampering attempts when a payload targets a foreign user ID
+    const targetPayloadId = dto?.userId || dto?.id || dto?._id || dto?.customerId;
+    if (targetPayloadId && targetPayloadId.toString() !== userId.toString()) {
+      const userRole = (currentUser?.role || '').toLowerCase();
+      const isSuperAdmin =
+        userRole === 'admin' ||
+        userRole === 'super_admin' ||
+        userRole === 'superadmin';
+      if (!isSuperAdmin) {
+        throw new ForbiddenException('غير مصرح لك بتعديل بيانات مستخدم آخر');
+      }
+    }
+
     const user = await this.userRepo.getOne({ _id: objectId });
     if (!user) {
       throw new NotFoundException('المستخدم غير موجود');
@@ -83,7 +99,7 @@ export class UserService {
       updateData.address = dto.address.trim();
     }
     if (dto.addresses !== undefined) {
-      updateData.addresses = dto.addresses.map((a) => a.trim()).filter(Boolean);
+      updateData.addresses = dto.addresses.map((a: string) => a.trim()).filter(Boolean);
     }
 
     const updatedUser = await this.userRepo.updateOne(
@@ -173,5 +189,28 @@ export class UserService {
     }
 
     return updatedUser;
+  }
+
+  /**
+   * جلب قائمة المستخدمين للإدارة مع دعم فلترة الدور (role)
+   */
+  async getAllUsers(role?: string) {
+    const filter: any = {};
+    if (role && role !== 'ALL') {
+      filter.role = { $regex: new RegExp(`^${role}$`, 'i') };
+    }
+    const users = await this.userRepo.getAll(filter, undefined, {
+      sort: { createdAt: -1 },
+    });
+    return users.map((u: any) => {
+      const raw = u.toObject ? u.toObject() : u;
+      const {
+        password,
+        emailVerificationOtpHash,
+        emailVerificationOtpExpiresAt,
+        ...safe
+      } = raw;
+      return safe;
+    });
   }
 }

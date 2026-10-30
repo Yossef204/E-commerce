@@ -1,6 +1,7 @@
 import apiClient from './client';
 import type {
   PlatformKPIs,
+  AdminDashboardOverviewData,
   SellingEntityAdmin,
   ProductModerationItem,
   EscrowLedgerItem,
@@ -12,9 +13,31 @@ import type {
 } from '../types/admin';
 
 export const adminApi = {
-  async getPlatformKPIs(): Promise<PlatformKPIs> {
-    const res = await apiClient.get<{ success: boolean; data: PlatformKPIs }>('/payments/kpis');
+  async getAdminDashboardOverview(): Promise<AdminDashboardOverviewData> {
+    const res = await apiClient.get<{ success: boolean; data: AdminDashboardOverviewData }>(
+      '/admin/dashboard/overview'
+    );
     return res.data.data;
+  },
+
+  async getPlatformKPIs(): Promise<PlatformKPIs> {
+    try {
+      const overviewRes = await apiClient.get<{ success: boolean; data: AdminDashboardOverviewData }>(
+        '/admin/dashboard/overview'
+      );
+      const ov = overviewRes.data.data;
+      return {
+        gmv: ov.platformOverview.gmv,
+        platformRevenue: ov.financialHealth.totalCollectedCommissions,
+        activeEscrowBalance: ov.financialHealth.totalHeldEscrow,
+        activeStoresCount: ov.platformOverview.activeStoresCount,
+        completedOrdersCount: ov.platformOverview.totalOrders,
+        recentOrders: [],
+      };
+    } catch {
+      const res = await apiClient.get<{ success: boolean; data: PlatformKPIs }>('/payments/kpis');
+      return res.data.data;
+    }
   },
 
   async getSellingEntities(): Promise<SellingEntityAdmin[]> {
@@ -177,6 +200,28 @@ export const adminApi = {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  },
+
+  async getUsers(role?: string): Promise<any[]> {
+    const res = await apiClient.get<any>('/users', {
+      params: role ? { role } : undefined,
+    });
+    const users = res.data?.data || res.data || [];
+    return Array.isArray(users) ? users : [];
+  },
+
+  async getUserPermissions(userId: string): Promise<string[]> {
+    try {
+      const res = await apiClient.get<any>(`/permissions/user/${userId}`);
+      return res.data?.permissions || [];
+    } catch {
+      return [];
+    }
+  },
+
+  async updateUserPermissions(userId: string, permissions: string[]): Promise<any> {
+    const res = await apiClient.post<any>('/permissions', { userId, permissions });
+    return res.data;
   },
 };
 

@@ -1,3 +1,5 @@
+export * from './permission';
+
 export type UserRole =
   | 'CUSTOMER'
   | 'SELLER'

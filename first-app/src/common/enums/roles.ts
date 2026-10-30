@@ -3,6 +3,6 @@ export enum RolesEnum {
   CUSTOMER = 'customer',
   SELLER = 'seller',
   COMPANY_ADMIN = 'company_admin',
-  SUPER_ADMIN = 'admin'
+  ADMIN = 'admin',
+  SUPER_ADMIN = 'super_admin',
 }
-

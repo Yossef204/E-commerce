@@ -54,20 +54,21 @@ export const Login: React.FC = () => {
       });
 
       const normalizedRole = (userRole || '').toLowerCase();
+      const normalizedStatus = (entityStatus || '').toUpperCase();
       if (normalizedRole === 'customer' || normalizedRole === 'user') {
         navigate('/');
       } else if (
         normalizedRole === 'seller' ||
         normalizedRole === 'company_admin'
       ) {
-        if (!sellingEntityId) {
-          navigate('/vendor/onboarding');
-        } else if (entityStatus === 'PENDING_APPROVAL') {
-          navigate('/vendor/pending-approval');
-        } else if (entityStatus === 'ACTIVE' || entityStatus === 'APPROVED') {
-          navigate('/vendor/dashboard');
+        if (normalizedStatus === 'PENDING_APPROVAL') {
+          navigate('/seller/pending-approval');
+        } else if (normalizedStatus === 'ACTIVE' || normalizedStatus === 'APPROVED') {
+          navigate('/seller/dashboard');
+        } else if (!sellingEntityId) {
+          navigate('/register-seller');
         } else {
-          navigate('/vendor/onboarding');
+          navigate('/seller/pending-approval');
         }
       } else if (normalizedRole === 'super_admin' || normalizedRole === 'admin') {
         navigate('/admin');
@@ -162,11 +163,19 @@ export const Login: React.FC = () => {
             )}
           </button>
 
-          <div className="pt-4 border-t border-slate-100 text-center text-sm text-slate-600">
-            ليس لديك حساب بعد؟{' '}
-            <Link to="/register" className="font-bold text-blue-600 hover:text-blue-700 hover:underline">
-              إنشاء حساب جديد
-            </Link>
+          <div className="pt-4 border-t border-slate-100 text-center text-sm text-slate-600 space-y-2">
+            <div>
+              ليس لديك حساب بعد؟{' '}
+              <Link to="/register" className="font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                إنشاء حساب جديد
+              </Link>
+            </div>
+            <div className="pt-2 border-t border-slate-50 text-xs text-slate-500">
+              ترغب في بيع منتجاتك معنا؟{' '}
+              <Link to="/register-seller" className="font-bold text-indigo-600 hover:text-indigo-700 hover:underline">
+                انضم كبائع / شركة من هنا
+              </Link>
+            </div>
           </div>
         </form>
       </div>

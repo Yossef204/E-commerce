@@ -29,7 +29,7 @@ export class CouponController {
 
   @UseGuards(AuthenticationGuard)
   @permissions(PermissionEnum.COUPONS_MANAGE_OWN)
-  @Post('vendor')
+  @Post(['vendor', ''])
   @HttpCode(HttpStatus.CREATED)
   async createVendorCoupon(
     @Request() req: any,
@@ -47,7 +47,7 @@ export class CouponController {
 
   @UseGuards(AuthenticationGuard)
   @permissions(PermissionEnum.COUPONS_MANAGE_OWN)
-  @Get('my-coupons')
+  @Get(['my-coupons', 'vendor'])
   async getMyCoupons(@Request() req: any) {
     const sellingEntityId =
       req.user?.sellingEntityId || req.query?.sellingEntityId;

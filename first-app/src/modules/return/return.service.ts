@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Connection, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
@@ -14,6 +15,9 @@ import { SellingEntityRepo } from '../../models/selling-entity/selling-entity.re
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
 import { LedgerRepo } from '../../models/ledger/ledger.repository';
 import { PaymentRepo } from '../../models/payment/payment.repository';
+import { ProductRepo } from '../../models/product/product.repository';
+import { PaymentService } from '../payment/payment.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ReturnStatusEnum,
   InspectionResultEnum,
@@ -44,6 +48,9 @@ export class ReturnService {
     private readonly inventoryRepo: InventoryRepo,
     private readonly ledgerRepo: LedgerRepo,
     private readonly paymentRepo: PaymentRepo,
+    @Optional() private readonly paymentService?: PaymentService,
+    @Optional() private readonly eventEmitter?: EventEmitter2,
+    @Optional() private readonly productRepo?: ProductRepo,
   ) {}
 
   /**
@@ -140,6 +147,13 @@ export class ReturnService {
   }
 
   /**
+   * Alias for createReturnRequest
+   */
+  async createReturnRequest(customerIdStr: string, dto: CreateReturnRequestDto) {
+    return this.requestReturn(customerIdStr, dto);
+  }
+
+  /**
    * Get return requests for a specific vendor/selling entity
    */
   async getVendorReturns(
@@ -190,6 +204,67 @@ export class ReturnService {
       .populate('sellingEntityId', 'tradeName legalName')
       .lean()
       .exec();
+  }
+
+  /**
+   * Get return request by ID with strict ownership verification
+   * Customer must own the return (customerId === authenticatedUserId)
+   * Vendor must own the sellingEntity (returnRecord.sellingEntityId === req.user.sellingEntityId)
+   * SuperAdmin has platform oversight
+   * Returns 404 (or 403) on cross-tenant access attempts
+   */
+  async getReturnById(returnIdStr: string, authenticatedUserId: string, currentUser?: any) {
+    if (!Types.ObjectId.isValid(returnIdStr)) {
+      throw new BadRequestException('معرف طلب الإرجاع غير صالح');
+    }
+
+    const returnRecord = await this.returnRepo.getOne({
+      _id: new Types.ObjectId(returnIdStr),
+    });
+    if (!returnRecord) {
+      throw new NotFoundException('طلب الإرجاع غير موجود');
+    }
+
+    const role = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      role === 'admin' ||
+      role === 'super_admin' ||
+      role === 'superadmin' ||
+      role === RolesEnum.SUPER_ADMIN.toLowerCase();
+
+    if (isSuperAdmin) {
+      return returnRecord;
+    }
+
+    const authUserIdStr = (
+      currentUser?.id ||
+      currentUser?.sub ||
+      currentUser?._id ||
+      authenticatedUserId
+    )?.toString();
+
+    // Verify Customer ownership
+    const isOwnerCustomer =
+      authUserIdStr &&
+      returnRecord.customerId &&
+      returnRecord.customerId.toString() === authUserIdStr;
+
+    // Verify Seller / Entity ownership
+    const sellerEntityId = (
+      currentUser?.sellingEntityId ||
+      currentUser?.entityId
+    )?.toString();
+
+    const isOwnerSeller =
+      sellerEntityId &&
+      returnRecord.sellingEntityId &&
+      returnRecord.sellingEntityId.toString() === sellerEntityId;
+
+    if (!isOwnerCustomer && !isOwnerSeller) {
+      throw new NotFoundException('طلب الإرجاع غير موجود');
+    }
+
+    return returnRecord;
   }
 
   /**
@@ -257,6 +332,18 @@ export class ReturnService {
       message: `تم تحديث حالة طلب الإرجاع إلى: ${dto.status}`,
       returnRequest: updated,
     };
+  }
+
+  /**
+   * Alias for inspectReturnItem
+   */
+  async inspectReturnItem(
+    userIdStr: string,
+    returnIdStr: string,
+    dto: InspectReturnRequestDto,
+    currentUser?: any,
+  ) {
+    return this.inspectAndApprove(userIdStr, returnIdStr, dto, currentUser);
   }
 
   /**
@@ -374,6 +461,30 @@ export class ReturnService {
         );
       }
 
+      // C. Refund execution based on refund method (Payment Gateway or Customer Wallet)
+      if (this.paymentService) {
+        if (
+          returnDoc.refundMethod === RefundMethodEnum.ORIGINAL_PAYMENT ||
+          returnDoc.refundMethod === RefundMethodEnum.ORIGINAL_PAYMENT_GATEWAY
+        ) {
+          if (typeof (this.paymentService as any).refundOriginalPayment === 'function') {
+            await (this.paymentService as any).refundOriginalPayment(
+              returnDoc.orderId,
+              returnDoc.refundAmount,
+              options,
+            );
+          }
+        } else if (returnDoc.refundMethod === RefundMethodEnum.WALLET_CREDIT) {
+          if (typeof (this.paymentService as any).creditCustomerWallet === 'function') {
+            await (this.paymentService as any).creditCustomerWallet(
+              returnDoc.customerId,
+              returnDoc.refundAmount,
+              options,
+            );
+          }
+        }
+      }
+
       // 3. Mark return document as REFUNDED
       await this.returnRepo.model.updateOne(
         { _id: returnDoc._id },
@@ -385,12 +496,24 @@ export class ReturnService {
         },
         options,
       );
+
+      if (this.eventEmitter) {
+        this.eventEmitter.emit('return.refunded', {
+          returnId: returnDoc._id,
+          orderId: returnDoc.orderId,
+          refundAmount: returnDoc.refundAmount,
+          refundMethod: returnDoc.refundMethod,
+          status: ReturnStatusEnum.REFUNDED,
+        });
+      }
     }, this.logger);
 
     return {
       success: true,
       message: `تم تنفيذ الاسترجاع المالي بقيمة ${returnDoc.refundAmount} ج.م بنجاح، وتحديث المخزون ودفتر الأستاذ`,
       refundedAmount: returnDoc.refundAmount,
+      status: ReturnStatusEnum.REFUNDED,
+      refundMethod: returnDoc.refundMethod,
     };
   }
 }

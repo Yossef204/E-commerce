@@ -1,115 +1,175 @@
 import { RolesEnum } from './roles';
+import { Permission } from './permission.enum';
 
-export enum PermissionEnum {
-  // Customer Permissions
-  PROFILE_READ = 'profile.read',
-  PROFILE_UPDATE = 'profile.update',
-  CART_MANAGE = 'cart.manage',
-  ORDERS_CREATE = 'orders.create',
-  ORDERS_READ_OWN = 'orders.read_own',
-  ORDERS_CANCEL_OWN = 'orders.cancel_own',
-  REVIEWS_CREATE = 'reviews.create',
+export * from './permission.enum';
 
-  // Customer Aliases & Backward Compatibility
-  ORDERS_READ = 'orders.read',
-  PROFILE_MANAGE = 'profile.manage',
+export const PermissionEnum = {
+  ...Permission,
 
-  // Seller Permissions
-  PRODUCTS_CREATE = 'products.create',
-  PRODUCTS_READ_OWN = 'products.read_own',
-  PRODUCTS_UPDATE_OWN = 'products.update_own',
-  PRODUCTS_DELETE_OWN = 'products.delete_own',
-  INVENTORY_MANAGE_OWN = 'inventory.manage_own',
-  ORDERS_SELLER_READ = 'orders.seller_read',
-  ORDERS_STATUS_UPDATE = 'orders.status_update',
-  COUPONS_MANAGE_OWN = 'coupons.manage_own',
-  ANALYTICS_READ_OWN = 'analytics.read_own',
-  PAYOUT_REQUEST = 'payout.request',
+  // Legacy Plural & Backward Compatibility Mappings
+  PRODUCTS_CREATE: Permission.PRODUCT_CREATE,
+  PRODUCTS_READ: Permission.PRODUCT_READ,
+  PRODUCTS_READ_OWN: Permission.PRODUCT_READ,
+  PRODUCTS_READ_ALL: Permission.PRODUCT_READ,
+  PRODUCTS_UPDATE: Permission.PRODUCT_UPDATE,
+  PRODUCTS_UPDATE_OWN: Permission.PRODUCT_UPDATE,
+  PRODUCTS_DELETE: Permission.PRODUCT_DELETE,
+  PRODUCTS_DELETE_OWN: Permission.PRODUCT_DELETE,
+  PRODUCTS_APPROVE: Permission.PRODUCT_APPROVE,
+  INVENTORY_MANAGE_OWN: Permission.INVENTORY_UPDATE,
+  INVENTORY_MANAGE: Permission.INVENTORY_UPDATE,
 
-  // Seller Aliases & Backward Compatibility
-  PRODUCTS_READ = 'products.read',
-  PRODUCTS_UPDATE = 'products.update',
-  PRODUCTS_DELETE = 'products.delete',
-  INVENTORY_MANAGE = 'inventory.manage',
+  ORDERS_CREATE: Permission.ORDER_CREATE,
+  ORDERS_READ: Permission.ORDER_READ,
+  ORDERS_READ_OWN: Permission.ORDER_READ_OWN,
+  ORDERS_SELLER_READ: Permission.ORDER_READ_ENTITY,
+  ORDERS_STATUS_UPDATE: Permission.ORDER_UPDATE_STATUS,
+  ORDERS_CANCEL_OWN: Permission.ORDER_CANCEL_OWN,
 
-  // Company Admin Permissions
-  COMPANY_STAFF_INVITE = 'company.staff_invite',
-  COMPANY_STAFF_MANAGE = 'company.staff_manage',
-  COMPANY_PROFILE_UPDATE = 'company.profile_update',
-  BRAND_MANAGE = 'brand.manage',
+  REVIEWS_CREATE: Permission.REVIEW_CREATE,
 
-  // Company Admin Aliases & Backward Compatibility
-  ENTITY_MANAGE = 'entity.manage',
-  ENTITY_USERS_MANAGE = 'entity.users_manage',
-  ANALYTICS_READ = 'analytics.read',
+  COUPONS_MANAGE_OWN: Permission.COUPON_MANAGE_OWN,
+  COUPONS_MANAGE_GLOBAL: Permission.COUPON_MANAGE_GLOBAL,
 
-  // Super Admin Permissions
-  PLATFORM_SUPER_ADMIN = 'platform.super_admin',
-  SELLING_ENTITY_APPROVE = 'selling_entity.approve',
-  SELLING_ENTITY_READ = 'selling_entity.read',
-  SELLING_ENTITY_SUSPEND = 'selling_entity.suspend',
-  PRODUCTS_APPROVE = 'products.approve',
-  PRODUCTS_READ_ALL = 'products.read_all',
-  COMMISSIONS_MANAGE = 'commissions.manage',
-  ESCROW_MANAGE = 'escrow.manage',
-  PAYOUT_PROCESS = 'payout.process',
-  COUPONS_MANAGE_GLOBAL = 'coupons.manage_global',
-  AUDIT_LOGS_READ = 'audit_logs.read',
-}
+  AUDIT_LOGS_READ: Permission.AUDIT_LOG_READ,
+  COMMISSIONS_MANAGE: Permission.COMMISSION_MANAGE,
 
-export const DEFAULT_CUSTOMER_PERMISSIONS: PermissionEnum[] = [
-  PermissionEnum.PROFILE_READ,
-  PermissionEnum.PROFILE_UPDATE,
-  PermissionEnum.CART_MANAGE,
-  PermissionEnum.ORDERS_CREATE,
-  PermissionEnum.ORDERS_READ_OWN,
-  PermissionEnum.ORDERS_CANCEL_OWN,
-  PermissionEnum.REVIEWS_CREATE,
-  PermissionEnum.ORDERS_READ,
-  PermissionEnum.PROFILE_MANAGE,
+  COMPANY_PROFILE_UPDATE: Permission.SELLING_ENTITY_UPDATE_OWN,
+  COMPANY_STAFF_INVITE: 'company.staff_invite',
+  COMPANY_STAFF_MANAGE: 'company.staff_manage',
+  ENTITY_MANAGE: Permission.SELLING_ENTITY_UPDATE_OWN,
+  ENTITY_USERS_MANAGE: 'entity.users_manage',
+  PROFILE_MANAGE: Permission.PROFILE_UPDATE_OWN,
+} as const;
+
+export type PermissionEnum = Permission;
+
+/**
+ * Valid canonical permissions set containing all registered Permission enum values
+ */
+export const VALID_PERMISSIONS_SET: ReadonlySet<string> = new Set<string>(
+  Object.values(Permission),
+);
+
+/**
+ * Translation dictionary for migrating legacy plural keys, aliases, and dropping broad/dangerous permissions
+ */
+export const LEGACY_PERMISSION_MAP: Readonly<Record<string, Permission | null>> = {
+  // Broad / Dangerous keys to explicitly drop (mapped to null)
+  'orders.read': null,
+  'order.read': null,
+
+  // Plural -> Singular Canonical Orders
+  'orders.create': Permission.ORDER_CREATE,
+  'orders.read_own': Permission.ORDER_READ_OWN,
+  'orders.cancel_own': Permission.ORDER_CANCEL_OWN,
+  'orders.seller_read': Permission.ORDER_READ_ENTITY,
+  'orders.status_update': Permission.ORDER_UPDATE_STATUS,
+  'order.cancel': Permission.ORDER_CANCEL_OWN,
+
+  // Profile Mapping
+  'profile.manage': Permission.PROFILE_UPDATE_OWN,
+  'profile.read': Permission.PROFILE_READ_OWN,
+  'profile.update': Permission.PROFILE_UPDATE_OWN,
+
+  // Reviews
+  'reviews.create': Permission.REVIEW_CREATE,
+  'reviews.read': Permission.REVIEW_READ,
+
+  // Products Plurals
+  'products.create': Permission.PRODUCT_CREATE,
+  'products.read': Permission.PRODUCT_READ,
+  'products.read_own': Permission.PRODUCT_READ,
+  'products.read_all': Permission.PRODUCT_READ,
+  'products.update': Permission.PRODUCT_UPDATE,
+  'products.update_own': Permission.PRODUCT_UPDATE,
+  'products.delete': Permission.PRODUCT_DELETE,
+  'products.delete_own': Permission.PRODUCT_DELETE,
+  'products.approve': Permission.PRODUCT_APPROVE,
+  'inventory.manage_own': Permission.INVENTORY_UPDATE,
+  'inventory.manage': Permission.INVENTORY_UPDATE,
+
+  // Coupons Plurals
+  'coupons.manage_own': Permission.COUPON_MANAGE_OWN,
+  'coupons.manage_global': Permission.COUPON_MANAGE_GLOBAL,
+
+  // Other Legacy Plurals
+  'audit_logs.read': Permission.AUDIT_LOG_READ,
+  'commissions.manage': Permission.COMMISSION_MANAGE,
+  'company.profile_update': Permission.SELLING_ENTITY_UPDATE_OWN,
+  'entity.manage': Permission.SELLING_ENTITY_UPDATE_OWN,
+  'returns.read': Permission.RETURN_READ_OWN,
+};
+
+/**
+ * Canonical Customer-Scoped Role Permissions:
+ * Contains only singular, canonical, deduplicated Permission enum values.
+ * Strictly excludes orders.read, order.read, and profile.manage.
+ */
+export const DEFAULT_CUSTOMER_PERMISSIONS: Permission[] = [
+  Permission.PRODUCT_READ,
+  Permission.ORDER_CREATE,
+  Permission.ORDER_READ_OWN,
+  Permission.ORDER_CANCEL_OWN,
+  Permission.REVIEW_CREATE,
+  Permission.REVIEW_READ,
+  Permission.PROFILE_READ_OWN,
+  Permission.PROFILE_UPDATE_OWN,
+  Permission.CART_MANAGE,
+  Permission.COUPON_APPLY,
+  Permission.RETURN_REQUEST,
+  Permission.RETURN_READ_OWN,
+  Permission.FILE_UPLOAD,
 ];
 
-export const DEFAULT_SELLER_PERMISSIONS: PermissionEnum[] = [
+export const DEFAULT_SELLER_PERMISSIONS: Permission[] = [
   ...DEFAULT_CUSTOMER_PERMISSIONS,
-  PermissionEnum.PRODUCTS_CREATE,
-  PermissionEnum.PRODUCTS_READ_OWN,
-  PermissionEnum.PRODUCTS_UPDATE_OWN,
-  PermissionEnum.PRODUCTS_DELETE_OWN,
-  PermissionEnum.INVENTORY_MANAGE_OWN,
-  PermissionEnum.ORDERS_SELLER_READ,
-  PermissionEnum.ORDERS_STATUS_UPDATE,
-  PermissionEnum.COUPONS_MANAGE_OWN,
-  PermissionEnum.ANALYTICS_READ_OWN,
-  PermissionEnum.PAYOUT_REQUEST,
-  PermissionEnum.PRODUCTS_READ,
-  PermissionEnum.PRODUCTS_UPDATE,
-  PermissionEnum.PRODUCTS_DELETE,
-  PermissionEnum.INVENTORY_MANAGE,
+  Permission.PRODUCT_CREATE,
+  Permission.PRODUCT_UPDATE,
+  Permission.PRODUCT_UPDATE_ENTITY,
+  Permission.PRODUCT_DELETE,
+  Permission.PRODUCT_DELETE_ENTITY,
+  Permission.INVENTORY_UPDATE,
+  Permission.INVENTORY_MANAGE_ENTITY,
+  Permission.ORDER_READ_ENTITY,
+  Permission.ORDER_UPDATE_STATUS,
+  Permission.ORDER_UPDATE_ENTITY_STATUS,
+  Permission.RETURN_READ_ENTITY,
+  Permission.RETURN_INSPECT,
+  Permission.SELLING_ENTITY_READ_OWN,
+  Permission.SELLING_ENTITY_UPDATE_OWN,
+  Permission.WALLET_READ_OWN,
+  Permission.PAYOUT_READ_OWN,
+  Permission.PAYOUT_READ_ENTITY,
+  Permission.PAYOUT_REQUEST,
+  Permission.COUPON_MANAGE_OWN,
+  Permission.ANALYTICS_READ_OWN,
 ];
 
-export const DEFAULT_COMPANY_ADMIN_PERMISSIONS: PermissionEnum[] = [
+export const DEFAULT_COMPANY_ADMIN_PERMISSIONS: Permission[] = [
   ...DEFAULT_SELLER_PERMISSIONS,
-  PermissionEnum.COMPANY_STAFF_INVITE,
-  PermissionEnum.COMPANY_STAFF_MANAGE,
-  PermissionEnum.COMPANY_PROFILE_UPDATE,
-  PermissionEnum.BRAND_MANAGE,
-  PermissionEnum.ENTITY_MANAGE,
-  PermissionEnum.ENTITY_USERS_MANAGE,
-  PermissionEnum.ANALYTICS_READ,
+  Permission.SELLING_ENTITY_UPDATE_OWN,
+  Permission.COMPANY_READ,
+  Permission.COMPANY_UPDATE,
 ];
 
-export const DEFAULT_SUPER_ADMIN_PERMISSIONS: PermissionEnum[] =
-  Object.values(PermissionEnum);
+export const DEFAULT_SUPER_ADMIN_PERMISSIONS: Permission[] = Array.from(
+  new Set(Object.values(Permission)),
+);
 
 export function getDefaultPermissionsForRole(
   role: RolesEnum | string,
-): PermissionEnum[] {
+): Permission[] {
   const normalizedRole = (role || '').toLowerCase();
   switch (normalizedRole) {
-    case RolesEnum.SUPER_ADMIN.toLowerCase():
-    case 'admin':
     case 'super_admin':
+    case 'superadmin':
+    case RolesEnum.SUPER_ADMIN.toLowerCase():
       return DEFAULT_SUPER_ADMIN_PERMISSIONS;
+    case 'admin':
+    case RolesEnum.ADMIN.toLowerCase():
+      // Platform staff (موظف المنصة): Granular permissions from database
+      return [];
     case RolesEnum.COMPANY_ADMIN.toLowerCase():
     case 'company_admin':
       return DEFAULT_COMPANY_ADMIN_PERMISSIONS;

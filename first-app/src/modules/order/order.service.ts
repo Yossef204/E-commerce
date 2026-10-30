@@ -38,6 +38,7 @@ import { PaymentMethodEnum } from '../../common/enums/payment-method.enum';
 import { PaymentStatusEnum } from '../../common/enums/payment-status.enum';
 import { CouponScopeEnum } from '../../common/enums/coupon-scope.enum';
 import { CouponService } from '../coupon/coupon.service';
+import { Permission } from '../../common/enums/permission.enum';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { OrderPlacedEvent } from '../../common/events/order-placed.event';
 import { AuditLogEvent } from '../../common/events/audit-log.event';
@@ -875,27 +876,35 @@ export class OrderService {
       throw new NotFoundException('Selling entity not found');
     }
 
-    const userRole = (currentUser?.role || '').toLowerCase();
-    const isAdmin =
-      userRole === 'admin' ||
-      userRole === 'super_admin' ||
-      userRole === 'superadmin' ||
-      userRole === RolesEnum.SUPER_ADMIN.toLowerCase();
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin';
+
+    const isAdminWithUpdate =
+      (roleUpper === 'ADMIN' || roleLower === 'admin') &&
+      (currentUser?.permissions?.includes(Permission.ORDER_UPDATE_STATUS) ||
+        currentUser?.permissions?.includes('orders.status_update'));
+
+    const userOwnerId = (currentUser?.id || currentUser?.sub || currentUser?._id || ownerIdStr)?.toString();
+    const userSellingEntityId = currentUser?.sellingEntityId?.toString();
 
     const isOwner =
       Boolean(
         sellingEntity.primaryOwnerId &&
-          ownerIdStr &&
-          sellingEntity.primaryOwnerId.toString() === ownerIdStr.toString(),
+          userOwnerId &&
+          sellingEntity.primaryOwnerId.toString() === userOwnerId,
       ) ||
       Boolean(
-        currentUser?.sellingEntityId &&
-          sellingEntity._id.toString() === currentUser.sellingEntityId.toString(),
+        userSellingEntityId &&
+          sellingEntity._id.toString() === userSellingEntityId,
       );
 
-    if (!isAdmin && !isOwner) {
+    if (!isSuperAdmin && !isAdminWithUpdate && !isOwner) {
       throw new ForbiddenException(
-        'Access denied: You do not own this selling entity',
+        'Access denied: You cannot modify orders of another selling entity',
       );
     }
 
@@ -1081,13 +1090,32 @@ export class OrderService {
     };
   }
 
-  async getCustomerOrders(customerIdStr: string) {
-    if (!Types.ObjectId.isValid(customerIdStr)) {
-      throw new BadRequestException('Invalid customer ID format');
+  async getMyOrders(authenticatedUserId: string, queryCustomerId?: string, currentUser?: any) {
+    if (!Types.ObjectId.isValid(authenticatedUserId)) {
+      throw new BadRequestException('Invalid user ID format');
     }
-    const customerId = new Types.ObjectId(customerIdStr);
 
-    const mainOrders = await this.mainOrderRepo.getAll({ customerId });
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin' ||
+      roleLower === RolesEnum.SUPER_ADMIN.toLowerCase();
+
+    const hasOrderReadAll =
+      currentUser?.permissions?.includes(Permission.ORDER_READ_ALL) ||
+      currentUser?.permissions?.includes('order.read_all');
+
+    let targetCustomerId: Types.ObjectId;
+    // Strictly bind customerId to authenticatedUserId unless caller holds ORDER_READ_ALL or is Super Admin
+    if ((isSuperAdmin || hasOrderReadAll) && queryCustomerId && Types.ObjectId.isValid(queryCustomerId)) {
+      targetCustomerId = new Types.ObjectId(queryCustomerId);
+    } else {
+      targetCustomerId = new Types.ObjectId(authenticatedUserId);
+    }
+
+    const mainOrders = await this.mainOrderRepo.getAll({ customerId: targetCustomerId });
     const ordersWithDetails = [];
 
     for (const mainOrder of mainOrders) {
@@ -1102,8 +1130,87 @@ export class OrderService {
 
     return {
       success: true,
+      count: ordersWithDetails.length,
       data: ordersWithDetails,
+      orders: ordersWithDetails,
     };
+  }
+
+  async getOrderById(orderIdStr: string, authenticatedUserId: string, currentUser?: any) {
+    if (!Types.ObjectId.isValid(orderIdStr)) {
+      throw new BadRequestException('Invalid order ID format');
+    }
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin' ||
+      roleLower === RolesEnum.SUPER_ADMIN.toLowerCase();
+
+    const hasOrderReadAll =
+      currentUser?.permissions?.includes(Permission.ORDER_READ_ALL) ||
+      currentUser?.permissions?.includes('order.read_all');
+
+    const query: any = { _id: new Types.ObjectId(orderIdStr) };
+    if (!isSuperAdmin && !hasOrderReadAll) {
+      if (!Types.ObjectId.isValid(authenticatedUserId)) {
+        throw new BadRequestException('Invalid user ID format');
+      }
+      query.customerId = new Types.ObjectId(authenticatedUserId);
+    }
+
+    const mainOrder = await this.mainOrderRepo.getOne(query);
+    if (!mainOrder) {
+      throw new NotFoundException('Order not found');
+    }
+
+    const entityOrders = await this.entityOrderRepo.getAll({
+      mainOrderId: mainOrder._id,
+    });
+
+    return {
+      success: true,
+      data: {
+        ...(mainOrder.toObject ? mainOrder.toObject() : mainOrder),
+        entityOrders,
+      },
+    };
+  }
+
+  async getCustomerOrders(customerIdStr: string, currentUser?: any) {
+    if (!Types.ObjectId.isValid(customerIdStr)) {
+      throw new BadRequestException('Invalid customer ID format');
+    }
+
+    const currentUserId = (
+      currentUser?.id ||
+      currentUser?.sub ||
+      currentUser?._id
+    )?.toString();
+
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin' ||
+      roleLower === RolesEnum.SUPER_ADMIN.toLowerCase();
+
+    const isAdminWithOrderRead =
+      (roleUpper === 'ADMIN' || roleLower === 'admin') &&
+      (currentUser?.permissions?.includes(Permission.ORDER_READ_ALL) ||
+        currentUser?.permissions?.includes('order.read_all'));
+
+    if (!isSuperAdmin && !isAdminWithOrderRead) {
+      if (currentUserId && currentUserId !== customerIdStr) {
+        throw new ForbiddenException(
+          'Access denied: You are restricted to querying your own customer orders',
+        );
+      }
+    }
+
+    return this.getMyOrders(currentUserId || customerIdStr, customerIdStr, currentUser);
   }
 
   async getEntityOrders(
@@ -1116,26 +1223,44 @@ export class OrderService {
     }
     const sellingEntityId = new Types.ObjectId(sellingEntityIdStr);
 
-    const userRole = (currentUser?.role || '').toLowerCase();
-    const isAdmin =
-      userRole === 'admin' ||
-      userRole === 'super_admin' ||
-      userRole === 'superadmin' ||
-      userRole === RolesEnum.SUPER_ADMIN.toLowerCase();
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin';
 
-    if (!isAdmin && ownerIdStr && Types.ObjectId.isValid(ownerIdStr)) {
+    const isAdminWithOrderRead =
+      (roleUpper === 'ADMIN' || roleLower === 'admin') &&
+      (currentUser?.permissions?.includes(Permission.ORDER_READ) ||
+        currentUser?.permissions?.includes('orders.read') ||
+        currentUser?.permissions?.includes('orders.seller_read'));
+
+    if (!isSuperAdmin && !isAdminWithOrderRead) {
       const sellingEntity = await this.sellingEntityRepo.getOne({
         _id: sellingEntityId,
       });
+      if (!sellingEntity) {
+        throw new NotFoundException('Selling entity not found');
+      }
+
+      const userOwnerId = (
+        currentUser?.id ||
+        currentUser?.sub ||
+        currentUser?._id ||
+        ownerIdStr
+      )?.toString();
+      const userSellingEntityId = currentUser?.sellingEntityId?.toString();
+
       const isOwner =
-        sellingEntity &&
-        (sellingEntity.primaryOwnerId?.toString() === ownerIdStr.toString() ||
-          (currentUser?.sellingEntityId &&
-            sellingEntity._id.toString() === currentUser.sellingEntityId.toString()));
+        (sellingEntity.primaryOwnerId &&
+          userOwnerId &&
+          sellingEntity.primaryOwnerId.toString() === userOwnerId) ||
+        (userSellingEntityId && userSellingEntityId === sellingEntityIdStr);
 
       if (!isOwner) {
         throw new ForbiddenException(
-          'Access denied: You do not own this selling entity',
+          'Access denied: You can only query orders belonging to your own selling entity',
         );
       }
     }
@@ -1144,6 +1269,47 @@ export class OrderService {
     return {
       success: true,
       data: entityOrders,
+    };
+  }
+
+  async getAllOrdersForAdmin(currentUser: any, query: any = {}) {
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin';
+
+    const isAdminWithOrderRead =
+      (roleUpper === 'ADMIN' || roleLower === 'admin') &&
+      (currentUser?.permissions?.includes(Permission.ORDER_READ) ||
+        currentUser?.permissions?.includes('orders.read'));
+
+    if (!isSuperAdmin && !isAdminWithOrderRead) {
+      if (currentUser?.sellingEntityId) {
+        const entityOrders = await this.entityOrderRepo.getAll({
+          sellingEntityId: new Types.ObjectId(currentUser.sellingEntityId),
+        });
+        return { success: true, data: entityOrders };
+      }
+      const customerId = currentUser?.id || currentUser?.sub;
+      return this.getCustomerOrders(customerId, currentUser);
+    }
+
+    const filter: any = {};
+    if (query.customerId && Types.ObjectId.isValid(query.customerId)) {
+      filter.customerId = new Types.ObjectId(query.customerId);
+    }
+    if (query.status) {
+      filter.status = query.status;
+    }
+
+    const mainOrders = await this.mainOrderRepo.getAll(filter, undefined, {
+      sort: { createdAt: -1 },
+    });
+    return {
+      success: true,
+      data: mainOrders,
     };
   }
 
@@ -1436,5 +1602,92 @@ export class OrderService {
       phoneMasked,
       expiresInSeconds: 300,
     };
+  }
+
+  async cancelMyOrder(orderIdStr: string, authenticatedUserId: string, currentUser?: any) {
+    if (!Types.ObjectId.isValid(orderIdStr)) {
+      throw new BadRequestException('Invalid order ID format');
+    }
+    if (!Types.ObjectId.isValid(authenticatedUserId)) {
+      throw new BadRequestException('Invalid user ID format');
+    }
+
+    const roleUpper = (currentUser?.role || '').toUpperCase().trim();
+    const roleLower = (currentUser?.role || '').toLowerCase().trim();
+    const isSuperAdmin =
+      roleUpper === 'SUPER_ADMIN' ||
+      roleLower === 'super_admin' ||
+      roleLower === 'superadmin' ||
+      roleLower === RolesEnum.SUPER_ADMIN.toLowerCase();
+
+    const hasOrderCancelAll =
+      currentUser?.permissions?.includes(Permission.ORDER_CANCEL) ||
+      currentUser?.permissions?.includes('order.cancel');
+
+    // Query must combine { _id: orderId, customerId: authenticatedUserId }
+    // Return 404 NotFoundException if no match is found (avoids leaking resource existence)
+    const query: any = { _id: new Types.ObjectId(orderIdStr) };
+    if (!isSuperAdmin && !hasOrderCancelAll) {
+      query.customerId = new Types.ObjectId(authenticatedUserId);
+    }
+
+    const mainOrder = await this.mainOrderRepo.getOne(query);
+    if (!mainOrder) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Verify state transition: only orders in PENDING state can be cancelled
+    const cancellableStatuses = [
+      'PENDING',
+      MainOrderStatusEnum.PENDING_PAYMENT,
+      MainOrderStatusEnum.PENDING_COD_VERIFICATION,
+    ];
+    if (!cancellableStatuses.includes(mainOrder.status as any)) {
+      throw new BadRequestException(
+        `Cannot cancel order in status ${mainOrder.status}. Only pending orders can be cancelled.`,
+      );
+    }
+
+    // Release stock atomically for all entity order items
+    const entityOrders = await this.entityOrderRepo.getAll({ mainOrderId: mainOrder._id });
+    for (const eo of entityOrders) {
+      for (const item of eo.items) {
+        await this.inventoryRepo.releaseStockAtomic(item.sku, item.quantity);
+      }
+      await this.entityOrderRepo.updateOne(
+        { _id: eo._id },
+        {
+          status: EntityOrderStatusEnum.CANCELLED,
+          $push: {
+            statusHistory: {
+              status: EntityOrderStatusEnum.CANCELLED,
+              updatedAt: new Date(),
+              note: 'Order cancelled by customer',
+            },
+          },
+        },
+      );
+    }
+
+    await this.mainOrderRepo.updateOne(
+      { _id: mainOrder._id },
+      { status: MainOrderStatusEnum.CANCELLED },
+    );
+
+    return {
+      success: true,
+      message: 'Order cancelled successfully',
+      orderId: mainOrder._id,
+    };
+  }
+
+  async cancelOrder(customerIdStr: string, orderIdStr: string, currentUser?: any) {
+    const currentUserId = (
+      currentUser?.id ||
+      currentUser?.sub ||
+      currentUser?._id ||
+      customerIdStr
+    )?.toString();
+    return this.cancelMyOrder(orderIdStr, currentUserId, currentUser);
   }
 }

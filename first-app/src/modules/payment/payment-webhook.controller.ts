@@ -20,7 +20,9 @@ import { IdempotencyService } from '../../shared/payment/services/idempotency.se
 import { PaymentStatusEnum } from '../../common/enums/payment-status.enum';
 import { MainOrderStatusEnum } from '../../common/enums/main-order-status.enum';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Public } from '../../common/decorators/public.decorator';
 
+@Public()
 @Controller('payments/webhook')
 export class PaymentWebhookController {
   private readonly logger = new Logger(PaymentWebhookController.name);

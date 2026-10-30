@@ -30,6 +30,15 @@ export class SellingEntity {
   @Prop({ type: String, required: true, trim: true })
   legalName: string;
 
+  @Prop({ type: String, default: null, trim: true })
+  tradeName?: string;
+
+  @Prop({ type: String, default: null })
+  description?: string;
+
+  @Prop({ type: String, default: null })
+  documentUrl?: string;
+
   @Prop({
     type: String,
     enum: Object.values(EntityTypeEnum),

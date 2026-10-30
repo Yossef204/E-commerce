@@ -217,4 +217,37 @@ export interface VendorReportFullData {
   decisionAnalytics: VendorDecisionAnalytics;
 }
 
+export interface AdminDashboardOverviewData {
+  platformOverview: {
+    totalOrders: number;
+    gmv: number;
+    totalUsers: number;
+    totalSellers: number;
+    activeStoresCount: number;
+    usersByRole: Record<string, number>;
+    currency: string;
+  };
+  approvalsCenter: {
+    pendingCompanyRegistrations: number;
+    pendingIndependentSellers: number;
+    productsPendingApproval: number;
+    totalPendingApprovals: number;
+    requiresAttention: boolean;
+  };
+  financialHealth: {
+    totalCollectedCommissions: number;
+    totalHeldEscrow: number;
+    pendingPayoutRequestsVolume: number;
+    pendingPayoutRequestsCount: number;
+    currency: string;
+  };
+  issuesAndFailures: {
+    failedFinancialTransactions: number;
+    unhandledWebhooks: number;
+    pendingReturns: number;
+    totalIssues: number;
+    hasCriticalIssues: boolean;
+  };
+}
+
 

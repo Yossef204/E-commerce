@@ -194,3 +194,42 @@ export interface PayoutRequestItem {
   rejectionReason?: string;
 }
 
+export interface CompanyDashboardOverviewData {
+  salesSummary: {
+    period: string;
+    startDate: string;
+    totalSales: number;
+    ordersCount: number;
+    avgOrderValue: number;
+    currency: string;
+  };
+  ordersRequiringAction: {
+    pending: number;
+    confirmed: number;
+    processing: number;
+    total: number;
+  };
+  pendingApprovals: {
+    pendingProductsCount: number;
+    requiresAction: boolean;
+  };
+  lowStockAlerts: {
+    threshold: number;
+    count: number;
+    items: Array<{
+      _id: string;
+      sku: string;
+      availableStock: number;
+      productId: string;
+      productTitle: string;
+    }>;
+    hasAlert: boolean;
+  };
+  financialBalances: {
+    heldEscrowBalance: number;
+    availablePayoutBalance: number;
+    codDebt: number;
+    currency: string;
+  };
+}
+

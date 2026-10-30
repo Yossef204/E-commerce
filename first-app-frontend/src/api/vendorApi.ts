@@ -2,6 +2,7 @@ import apiClient from './client';
 import type {
   SellingEntity,
   VendorDashboardData,
+  CompanyDashboardOverviewData,
   VendorProduct,
   VendorOrder,
   CreateProductPayload,
@@ -29,6 +30,20 @@ export const vendorApi = {
   async getDashboardMetrics(sellingEntityId: string): Promise<VendorDashboardData> {
     const res = await apiClient.get<{ success: boolean; data: VendorDashboardData }>(
       `/selling-entities/${sellingEntityId}/dashboard-metrics`
+    );
+    return res.data.data;
+  },
+
+  // Fetch 5-element company dashboard overview from new dashboard aggregation module
+  async getCompanyDashboardOverview(
+    sellingEntityId?: string,
+    period: 'day' | 'month' | 'year' = 'month',
+  ): Promise<CompanyDashboardOverviewData> {
+    const res = await apiClient.get<{ success: boolean; data: CompanyDashboardOverviewData }>(
+      '/company/dashboard/overview',
+      {
+        params: { sellingEntityId, period },
+      }
     );
     return res.data.data;
   },
