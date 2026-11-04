@@ -20,6 +20,7 @@ import { useCartStore } from '../store/useCartStore';
 import { apiClient } from '../api/client';
 import { getImageUrl, handleImageError } from '../utils/imageHelper';
 import { CodVerificationModal } from '../components/checkout/CodVerificationModal';
+import { PaymobIframeModal } from '../components/payment/PaymobIframeModal';
 
 export const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
@@ -39,10 +40,6 @@ export const CheckoutPage: React.FC = () => {
     'CARD' | 'WALLET' | 'INSTAPAY' | 'COD'
   >('CARD');
   const [walletNumber, setWalletNumber] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
-  const [cardHolder, setCardHolder] = useState('');
   const [instapayRef, setInstapayRef] = useState('');
 
   const [savedAddresses, setSavedAddresses] = useState<string[]>([]);
@@ -58,24 +55,13 @@ export const CheckoutPage: React.FC = () => {
     phoneMasked?: string;
   } | null>(null);
 
-  const handleCardNumberChange = (val: string) => {
-    const raw = val.replace(/\D/g, '').slice(0, 16);
-    const parts = raw.match(/.{1,4}/g);
-    setCardNumber(parts ? parts.join(' ') : raw);
-  };
-
-  const handleExpiryChange = (val: string) => {
-    const raw = val.replace(/\D/g, '').slice(0, 4);
-    if (raw.length >= 3) {
-      setCardExpiry(`${raw.slice(0, 2)}/${raw.slice(2)}`);
-    } else {
-      setCardExpiry(raw);
-    }
-  };
-
-  const handleCvcChange = (val: string) => {
-    setCardCvc(val.replace(/\D/g, '').slice(0, 4));
-  };
+  const [isPaymobModalOpen, setIsPaymobModalOpen] = useState(false);
+  const [paymobModalData, setPaymobModalData] = useState<{
+    orderId: string;
+    amount: number;
+    billingData?: any;
+    confirmedOrder?: any;
+  } | null>(null);
 
   const handleWalletChange = (val: string) => {
     setWalletNumber(val.replace(/\D/g, '').slice(0, 11));
@@ -137,24 +123,6 @@ export const CheckoutPage: React.FC = () => {
         setErrorMsg('رقم المحفظة الإلكترونية غير صحيح. يجب أن يتكون من 11 رقماً ويبدأ بـ (010، 011، 012، 015)');
         return;
       }
-    } else if (paymentMethod === 'CARD') {
-      const cleanCard = cardNumber.replace(/\s+/g, '');
-      if (cleanCard.length < 16) {
-        setErrorMsg('يرجى إدخال رقم بطاقة ائتمان صحيح مكون من 16 رقماً');
-        return;
-      }
-      if (!cardExpiry || !/^\d{2}\/\d{2}$/.test(cardExpiry)) {
-        setErrorMsg('يرجى إدخال تاريخ انتهاء صلاحية البطاقة بالشكل (MM/YY)');
-        return;
-      }
-      if (cardCvc.trim().length < 3) {
-        setErrorMsg('يرجى إدخال رمز الأمان CVC (3 أو 4 أرقام)');
-        return;
-      }
-      if (!cardHolder.trim()) {
-        setErrorMsg('يرجى إدخال اسم صاحب البطاقة كما هو مدون عليها');
-        return;
-      }
     } else if (paymentMethod === 'INSTAPAY') {
       if (!instapayRef.trim()) {
         setErrorMsg('يرجى إدخال رقم مرجع المعاملة أو إشعار التحويل من تطبيق InstaPay');
@@ -213,6 +181,29 @@ export const CheckoutPage: React.FC = () => {
         return;
       }
 
+      // If Payment Method is CARD, launch Paymob Iframe Modal
+      if (paymentMethod === 'CARD') {
+        const confirmedOrder =
+          data.mainOrder || data.masterOrder || data.order || data;
+        const orderId =
+          confirmedOrder?._id || confirmedOrder?.id || data.orderId;
+        const orderNumber = confirmedOrder?.orderNumber || orderId;
+        const finalAmount = confirmedOrder?.totalAmount || getTotalPrice();
+
+        setPaymobModalData({
+          orderId: orderNumber,
+          amount: finalAmount,
+          billingData: {
+            phoneNumber: phone,
+            city,
+            street,
+          },
+          confirmedOrder,
+        });
+        setIsPaymobModalOpen(true);
+        return;
+      }
+
       clearCart();
       const confirmedOrder =
         data.mainOrder || data.masterOrder || data.order || data;
@@ -237,6 +228,24 @@ export const CheckoutPage: React.FC = () => {
       setErrorMsg(serverMsg);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePaymobSuccess = (resData: any) => {
+    setIsPaymobModalOpen(false);
+    clearCart();
+    const confirmedOrder = paymobModalData?.confirmedOrder;
+    const orderId =
+      confirmedOrder?._id ||
+      confirmedOrder?.id ||
+      resData?.orderIdentifier ||
+      paymobModalData?.orderId;
+    if (orderId) {
+      navigate(`/order-success/${orderId}`, {
+        state: { order: confirmedOrder },
+      });
+    } else {
+      setOrderSuccess(confirmedOrder || resData);
     }
   };
 
@@ -594,84 +603,36 @@ export const CheckoutPage: React.FC = () => {
 
             {/* Dynamic Payment Method Fields */}
             {paymentMethod === 'CARD' && (
-              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-4 animate-fade-in mt-3">
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5">
-                  <span className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
+              <div className="bg-gradient-to-br from-blue-50/80 via-white to-indigo-50/60 border border-blue-200/90 rounded-2xl p-4 sm:p-5 space-y-3.5 animate-fade-in mt-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-blue-200/60 pb-3">
+                  <span className="font-bold text-xs text-blue-900 flex items-center gap-2">
                     <CreditCard className="w-4 h-4 text-blue-600" />
-                    بيانات البطاقة البنكية
+                    بوابة الدفع الإلكتروني الآمنة (Paymob Gateway)
                   </span>
-                  <span className="text-[10px] text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> مشفر 256-bit SSL
+                  <span className="text-[10px] text-emerald-700 bg-emerald-100/80 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    PCI-DSS معتمد
                   </span>
                 </div>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      رقم البطاقة (16 رقماً) *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="4242 4242 4242 4242"
-                      value={cardNumber}
-                      onChange={(e) => handleCardNumberChange(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                      dir="ltr"
-                    />
-                  </div>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  عند النقر على <strong className="text-blue-700 font-bold">"متابعة الدفع عبر Paymob"</strong> أدناه، ستفتح نافذة الدفع المشفرة الرسمية لإدخال بيانات بطاقتك البنكية بأعلى معايير الأمان العالمية.
+                </p>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        تاريخ الانتهاء (MM/YY) *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="12/26"
-                        value={cardExpiry}
-                        onChange={(e) => handleExpiryChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                        dir="ltr"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                        رمز الأمان (CVC) *
-                      </label>
-                      <input
-                        type="password"
-                        required
-                        placeholder="123"
-                        value={cardCvc}
-                        onChange={(e) => handleCvcChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
-                        dir="ltr"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                      اسم حامل البطاقة (بالحروف الإنجليزية) *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="AHMED MOHAMED"
-                      value={cardHolder}
-                      onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-                      className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 uppercase"
-                      dir="ltr"
-                    />
-                  </div>
-
-                  <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>دفع آمن وفوري يدعم بطاقات فيزا، ماستركارد، وبطاقات ميزة الوطنية. بياناتك محمية بالكامل.</span>
-                  </div>
+                <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-500">
+                  <span className="px-2.5 py-1 bg-white rounded-lg border border-slate-200 font-semibold text-slate-700 shadow-2xs">
+                    💳 Visa
+                  </span>
+                  <span className="px-2.5 py-1 bg-white rounded-lg border border-slate-200 font-semibold text-slate-700 shadow-2xs">
+                    💳 MasterCard
+                  </span>
+                  <span className="px-2.5 py-1 bg-white rounded-lg border border-slate-200 font-semibold text-slate-700 shadow-2xs">
+                    💳 كارت ميزة (Meeza)
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-medium mr-auto flex items-center gap-1 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                    <Lock className="w-3 h-3" />
+                    حماية ثلاثية 3D Secure
+                  </span>
                 </div>
               </div>
             )}
@@ -907,7 +868,12 @@ export const CheckoutPage: React.FC = () => {
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>جارٍ تأكيد الطلب...</span>
+                  <span>جارٍ تجهيز الطلب...</span>
+                </>
+              ) : paymentMethod === 'CARD' ? (
+                <>
+                  <CreditCard className="w-4 h-4" />
+                  <span>متابعة الدفع عبر Paymob (البطاقة البنكية)</span>
                 </>
               ) : (
                 <span>تأكيد الطلب الآن</span>
@@ -930,6 +896,21 @@ export const CheckoutPage: React.FC = () => {
           phoneMasked={codModalData.phoneMasked}
           onVerified={handleCodVerified}
           onCancel={() => setIsCodModalOpen(false)}
+        />
+      )}
+
+      {isPaymobModalOpen && paymobModalData && (
+        <PaymobIframeModal
+          isOpen={isPaymobModalOpen}
+          onClose={() => setIsPaymobModalOpen(false)}
+          amount={paymobModalData.amount}
+          orderId={paymobModalData.orderId}
+          billingData={paymobModalData.billingData}
+          onSuccess={handlePaymobSuccess}
+          onError={(err) => {
+            console.error('Paymob payment error:', err);
+            setErrorMsg('تعذر إتمام الدفع عبر بوابة Paymob، يرجى المحاولة مرة أخرى');
+          }}
         />
       )}
     </div>

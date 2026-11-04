@@ -22,6 +22,7 @@ import { ForgotPassword } from './modules/auth/ForgotPassword';
 import { ResetPassword } from './modules/auth/ResetPassword';
 import { ProfilePage } from './modules/storefront/pages/ProfilePage';
 import { OrderSuccessPage } from './modules/storefront/pages/OrderSuccessPage';
+import { PaymobTestPage } from './pages/PaymobTestPage';
 import { ProtectedRoute } from './routes/ProtectedRoute';
 
 import { VendorOnboardingPage } from './modules/vendor/pages/VendorOnboardingPage';
@@ -66,6 +67,7 @@ export const App: React.FC = () => {
           <Route path="/verify-otp" element={<VerifyOtp />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/paymob-test" element={<PaymobTestPage />} />
 
           {/* Vendor Onboarding Route */}
           <Route
