@@ -27,6 +27,8 @@ import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
 import { RolesEnum } from '../../common/enums/roles';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Returns & Refunds')
 @ApiBearerAuth('JWT-auth')
@@ -38,6 +40,7 @@ export class ReturnController {
   /**
    * Customer submits a return request for items in a delivered order
    */
+  @Auditable({ targetEntity: 'Return', action: AuditActionEnum.CREATE })
   @permissions(Permission.RETURN_REQUEST)
   @Post('request')
   @ApiOperation({
@@ -131,6 +134,7 @@ export class ReturnController {
   /**
    * Vendor / Admin inspects and approves or rejects a return
    */
+  @Auditable({ targetEntity: 'Return', action: AuditActionEnum.STATUS_CHANGE })
   @permissions(Permission.RETURN_INSPECT)
   @Patch(':id/inspect')
   @ApiOperation({
@@ -158,6 +162,7 @@ export class ReturnController {
   /**
    * Vendor / Admin processes refund, inventory restock, and ledger reversal
    */
+  @Auditable({ targetEntity: 'Return', action: AuditActionEnum.REFUND_TRIGGERED })
   @permissions(Permission.REFUND_EXECUTE)
   @Post(':id/refund')
   @ApiOperation({

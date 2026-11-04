@@ -16,6 +16,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PaymentService } from './payment.service';
+import { PaymobService } from './paymob.service';
+import { InitiatePaymobDto } from './dto/initiate-paymob.dto';
 import { ProcessPaymentDto } from './dto/process-payment.dto';
 import { ReleaseEscrowDto } from './dto/release-escrow.dto';
 import { RequestPayoutDto } from './dto/request-payout.dto';
@@ -24,12 +26,89 @@ import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
 import { RolesEnum } from '../../common/enums/roles';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Admin Finance & Payments')
 @ApiBearerAuth('JWT-auth')
 @Controller('payments')
 export class PaymentController {
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly paymobService: PaymobService,
+  ) {}
+
+  /**
+   * Paymob: Initiate Card Payment Session (3-Step Flow)
+   * Auth Token -> Order Registration -> Payment Key -> iFrame URL
+   */
+  @Public()
+  @Post('paymob/initiate')
+  @ApiOperation({
+    summary: 'Initiate Paymob card payment session',
+    description:
+      'Authenticates with Paymob, registers order amount, generates payment key and returns direct iframe URL',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Paymob payment session initialized successfully',
+  })
+  public async initiatePaymob(
+    @Body() dto: InitiatePaymobDto,
+    @Request() req?: any,
+  ) {
+    const user = req?.user;
+    const enrichedDto: InitiatePaymobDto = {
+      ...dto,
+      billingData: {
+        firstName:
+          user?.firstName ||
+          dto.billingData?.firstName ||
+          dto.billingData?.first_name ||
+          'Customer',
+        lastName:
+          user?.lastName ||
+          dto.billingData?.lastName ||
+          dto.billingData?.last_name ||
+          'Shopper',
+        email: user?.email || dto.billingData?.email || 'customer@example.com',
+        phoneNumber:
+          user?.phone ||
+          user?.phoneNumber ||
+          dto.billingData?.phoneNumber ||
+          dto.billingData?.phone_number ||
+          '+201000000000',
+        city: dto.billingData?.city || 'Cairo',
+        street: dto.billingData?.street || 'Street',
+        building: dto.billingData?.building || 'NA',
+        apartment: dto.billingData?.apartment || 'NA',
+        floor: dto.billingData?.floor || 'NA',
+        postalCode: dto.billingData?.postalCode || 'NA',
+        country: dto.billingData?.country || 'EGY',
+        state: dto.billingData?.state || 'Cairo',
+        ...dto.billingData,
+      },
+    };
+
+    return this.paymobService.initiateCardPayment(enrichedDto);
+  }
+
+  /**
+   * Paymob: Get Public Configuration
+   */
+  @Public()
+  @Get('paymob/config')
+  @ApiOperation({
+    summary: 'Get Paymob public configuration',
+    description:
+      'Returns client-safe Paymob parameters including iframe ID and supported currency',
+  })
+  public async getPaymobConfig() {
+    return {
+      iframeId: this.paymobService.getPublicIframeId(),
+      currency: 'EGP',
+      paymentMethods: ['CARD', 'WALLET'],
+    };
+  }
 
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.ORDER_CREATE)

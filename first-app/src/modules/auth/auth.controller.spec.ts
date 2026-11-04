@@ -13,6 +13,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RolesEnum } from '../../common/enums/roles';
 import { RateLimiterGuard } from '../../common/guards/rate-limiter.guard';
 import { AuthenticationGuard } from '../../common/guards/authentication.guard';
+import { ResetTokenGuard } from './guards/reset-token.guard';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -61,6 +62,8 @@ describe('AuthController', () => {
       .overrideGuard(RateLimiterGuard)
       .useValue({ canActivate: () => true })
       .overrideGuard(AuthenticationGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(ResetTokenGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
@@ -229,18 +232,17 @@ describe('AuthController', () => {
   });
 
   describe('resetPassword', () => {
-    it('should call authService.resetPassword', async () => {
+    it('should call authService.resetPassword with email from req.user and newPassword', async () => {
+      const req = { user: { email: 'user@example.com', purpose: 'password_reset' } };
       const dto: ResetPasswordDto = {
-        email: 'user@example.com',
-        otp: '123456',
         newPassword: 'NewPassword123!',
       };
       const response = { success: true, message: 'Password reset successfully' };
       authService.resetPassword.mockResolvedValue(response);
 
-      const result = await controller.resetPassword(dto);
+      const result = await controller.resetPassword(req, dto);
 
-      expect(authService.resetPassword).toHaveBeenCalledWith(dto);
+      expect(authService.resetPassword).toHaveBeenCalledWith('user@example.com', 'NewPassword123!');
       expect(result).toEqual(response);
     });
   });

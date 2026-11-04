@@ -208,11 +208,15 @@ describe('UserService', () => {
       );
       expect(userRepo.updateOne).toHaveBeenCalledWith(
         { _id: mockUserId },
-        { password: 'new_hashed_pass' },
+        {
+          $inc: { tokenVersion: 1 },
+          $set: { password: 'new_hashed_pass' },
+        },
+        { new: true },
       );
       expect(result).toEqual({
         success: true,
-        message: 'تم تغيير كلمة المرور بنجاح',
+        message: 'تم تغيير كلمة المرور بنجاح وإلغاء جميع الجلسات السابقة',
       });
     });
   });
@@ -244,7 +248,12 @@ describe('UserService', () => {
       expect(fileUploadsService.deleteFile).toHaveBeenCalledWith(
         'avatars/old_pic.jpg',
       );
-      expect(result).toEqual(updatedDoc);
+      expect(result).toMatchObject({
+        _id: mockUserDoc._id,
+        email: mockUserDoc.email,
+        profilePic: 'avatars/new.jpg',
+      });
+      expect(result.password).toBeUndefined();
     });
   });
 

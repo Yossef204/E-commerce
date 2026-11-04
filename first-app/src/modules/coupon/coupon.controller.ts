@@ -21,12 +21,15 @@ import { UpdateCouponStatusDto } from './dto/update-coupon-status.dto';
 import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { PermissionEnum } from '../../common/enums/permissions.enum';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('coupons')
 export class CouponController {
   constructor(private readonly couponService: CouponService) {}
 
+  @Auditable({ targetEntity: 'Coupon', action: AuditActionEnum.CREATE })
   @UseGuards(AuthenticationGuard)
   @permissions(PermissionEnum.COUPONS_MANAGE_OWN)
   @Post(['vendor', ''])
@@ -59,6 +62,7 @@ export class CouponController {
     return this.couponService.getVendorCoupons(sellingEntityId);
   }
 
+  @Auditable({ targetEntity: 'Coupon', action: AuditActionEnum.CREATE })
   @UseGuards(AuthenticationGuard)
   @permissions(PermissionEnum.COUPONS_MANAGE_GLOBAL)
   @Post('platform')
@@ -74,6 +78,7 @@ export class CouponController {
     return this.couponService.getAllCoupons();
   }
 
+  @Auditable({ targetEntity: 'Coupon', action: AuditActionEnum.STATUS_CHANGE })
   @UseGuards(AuthenticationGuard)
   @permissions(PermissionEnum.COUPONS_MANAGE_GLOBAL)
   @Patch('admin/:id/status')

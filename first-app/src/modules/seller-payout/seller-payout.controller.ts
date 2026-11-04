@@ -27,12 +27,14 @@ import { RequestSellerPayoutDto } from './dto/request-seller-payout.dto';
 import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Seller Payout & Ledger')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(AuthenticationGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-@Controller(['seller', 'api/seller'])
+@Controller(['seller', 'api/seller', 'payouts', 'api/payouts'])
 export class SellerPayoutController {
   constructor(private readonly sellerPayoutService: SellerPayoutService) {}
 
@@ -50,6 +52,7 @@ export class SellerPayoutController {
    * POST /seller/payout-methods
    * Add a new payout method
    */
+  @Auditable({ targetEntity: 'SellerPayout', action: AuditActionEnum.CREATE })
   @permissions(Permission.PAYOUT_REQUEST)
   @Post('payout-methods')
   @HttpCode(HttpStatus.CREATED)
@@ -188,11 +191,12 @@ export class SellerPayoutController {
   }
 
   /**
-   * POST /seller/payouts/request
+   * POST /seller/payouts/request or POST /payouts/request
    * Submit payout request
    */
+  @Auditable({ targetEntity: 'SellerPayout', action: AuditActionEnum.PAYOUT_GENERATED })
   @permissions(Permission.PAYOUT_REQUEST)
-  @Post('payouts/request')
+  @Post(['payouts/request', 'request'])
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Request Vendor Payout',

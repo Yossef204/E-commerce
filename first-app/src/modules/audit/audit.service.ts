@@ -16,11 +16,15 @@ export class AuditService {
       `AuditLog [${dto.action}] on ${dto.targetEntity}:${dto.targetId} by actor ${dto.actorId}`,
     );
 
+    const actorObjectId = Types.ObjectId.isValid(dto.actorId)
+      ? new Types.ObjectId(dto.actorId)
+      : new Types.ObjectId('000000000000000000000000');
+
     return this.auditLogRepo.create({
-      actorId: new Types.ObjectId(dto.actorId),
+      actorId: actorObjectId,
       action: dto.action,
       targetEntity: dto.targetEntity,
-      targetId: dto.targetId,
+      targetId: String(dto.targetId || 'N/A'),
       previousState: dto.previousState,
       newState: dto.newState,
       ipAddress: dto.ipAddress,
@@ -45,7 +49,9 @@ export class AuditService {
   }
 
   public async getAuditLogsByEntity(targetEntity: string, targetId?: string) {
-    const filter: any = { targetEntity };
+    const filter: any = {
+      targetEntity: new RegExp(`^${targetEntity}$`, 'i'),
+    };
     if (targetId) {
       filter.targetId = targetId;
     }
@@ -55,6 +61,9 @@ export class AuditService {
   }
 
   public async getAuditLogsByActor(actorId: string) {
+    if (!Types.ObjectId.isValid(actorId)) {
+      return [];
+    }
     return this.auditLogRepo.getAll(
       { actorId: new Types.ObjectId(actorId) },
       undefined,

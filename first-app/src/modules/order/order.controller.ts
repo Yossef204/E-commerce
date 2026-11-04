@@ -35,6 +35,8 @@ import { PaymentContext } from '../../shared/payment/context/payment.context';
 import { CheckoutSagaService } from '../../shared/payment/saga/checkout.saga';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { RateLimiterGuard } from '../../common/guards/rate-limiter.guard';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Orders')
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
@@ -61,6 +63,12 @@ export class OrderController {
     };
   }
 
+  @Auditable({
+    targetEntity: 'Order',
+    action: AuditActionEnum.CREATE,
+    targetIdExtractor: (req, res) =>
+      res?._id || res?.data?._id || res?.mainOrder?._id || res?.orderId || res?.data?.orderId,
+  })
   @ApiBearerAuth('JWT-auth')
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.ORDER_CREATE)
@@ -92,6 +100,7 @@ export class OrderController {
     return this.orderService.checkout(customerId, checkoutDto);
   }
 
+  @Auditable({ targetEntity: 'Order', action: AuditActionEnum.STATUS_CHANGE })
   @ApiBearerAuth('JWT-auth')
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.ORDER_UPDATE_STATUS)
@@ -160,6 +169,25 @@ export class OrderController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Global orders list retrieved' })
   async getAllOrdersForAdmin(@Req() req: any, @Query() query: any) {
     return this.orderService.getAllOrdersForAdmin(req?.user, query);
+  }
+
+  @ApiBearerAuth('JWT-auth')
+  @UseGuards(AuthenticationGuard)
+  @permissions(Permission.ORDER_READ_ENTITY)
+  @Get('merchant')
+  @ApiOperation({
+    summary: 'Vendor Orders Oversight',
+    description: 'Lists all entity sub-orders belonging to the authenticated merchant',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Vendor orders list' })
+  async getMerchantOrders(@Req() req: any) {
+    const effectiveOwnerId = req.user?.id || req.user?.sub || req.user?._id;
+    const sellingEntityId = req.user?.sellingEntityId;
+    return this.orderService.getEntityOrders(
+      effectiveOwnerId,
+      sellingEntityId,
+      req.user,
+    );
   }
 
   @ApiBearerAuth('JWT-auth')
@@ -244,6 +272,7 @@ export class OrderController {
     return this.orderService.getOrderById(id, authenticatedUserId, req?.user);
   }
 
+  @Auditable({ targetEntity: 'Order', action: AuditActionEnum.CANCEL })
   @ApiBearerAuth('JWT-auth')
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.ORDER_CANCEL_OWN)

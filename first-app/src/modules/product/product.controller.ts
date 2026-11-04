@@ -27,6 +27,8 @@ import { RolesEnum } from '../../common/enums/roles';
 import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-status.enum';
 import { Public } from '../../common/decorators/public.decorator';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Products')
 @ApiBearerAuth('JWT-auth')
@@ -35,6 +37,7 @@ import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagg
 export class ProductController {
   constructor(private readonly productService: ProductService) {}
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.CREATE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_CREATE)
   @Post()
@@ -81,6 +84,7 @@ export class ProductController {
     return this.productService.findAllForAdmin();
   }
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.STATUS_CHANGE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_APPROVE)
   @Patch([':id/approval', ':id/status'])
@@ -94,6 +98,7 @@ export class ProductController {
     return this.productService.updateApprovalStatus(id, updateApprovalDto);
   }
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.APPROVE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_APPROVE)
   @Patch(':id/approve')
@@ -106,6 +111,7 @@ export class ProductController {
     });
   }
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.REJECT })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_APPROVE)
   @Patch(':id/reject')
@@ -122,6 +128,11 @@ export class ProductController {
     });
   }
 
+  @Auditable({
+    targetEntity: 'Inventory',
+    action: AuditActionEnum.STOCK_UPDATE,
+    targetIdExtractor: (req) => req.body?.productId || req.body?.sku,
+  })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.INVENTORY_UPDATE)
   @Patch('inventory/stock')
@@ -183,6 +194,7 @@ export class ProductController {
     return this.productService.findEntityProducts(sellingEntityId);
   }
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.UPDATE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_UPDATE)
   @Patch(':id')
@@ -197,6 +209,7 @@ export class ProductController {
     return this.productService.updateProduct(id, updateProductDto, userContext);
   }
 
+  @Auditable({ targetEntity: 'Product', action: AuditActionEnum.DELETE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PRODUCT_DELETE)
   @Delete(':id')

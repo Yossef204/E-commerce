@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -7,6 +7,14 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   logger.log('Starting NestJS application...');
   const app = await NestFactory.create(AppModule);
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
 
   app.enableCors({
     origin: true,
@@ -19,6 +27,7 @@ async function bootstrap() {
       'Idempotency-Key',
       'idempotency-key',
       'x-requested-with',
+      'ngrok-skip-browser-warning',
     ],
     exposedHeaders: ['Idempotency-Key', 'idempotency-key'],
     optionsSuccessStatus: 200,

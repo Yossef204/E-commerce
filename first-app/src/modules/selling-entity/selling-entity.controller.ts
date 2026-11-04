@@ -22,6 +22,8 @@ import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
 import { RolesEnum } from '../../common/enums/roles';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Selling Entities')
 @ApiBearerAuth('JWT-auth')
@@ -30,6 +32,7 @@ import { RolesEnum } from '../../common/enums/roles';
 export class SellingEntityController {
   constructor(private readonly sellingEntityService: SellingEntityService) {}
 
+  @Auditable({ targetEntity: 'SellingEntity', action: AuditActionEnum.CREATE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PROFILE_UPDATE)
   @Post('company')
@@ -43,6 +46,7 @@ export class SellingEntityController {
     return this.sellingEntityService.registerCompany(ownerId, createCompanyDto);
   }
 
+  @Auditable({ targetEntity: 'SellingEntity', action: AuditActionEnum.CREATE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.PROFILE_UPDATE)
   @Post('independent-seller')
@@ -59,6 +63,7 @@ export class SellingEntityController {
     );
   }
 
+  @Auditable({ targetEntity: 'SellingEntity', action: AuditActionEnum.STATUS_CHANGE })
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.SELLING_ENTITY_APPROVE)
   @Patch(':id/status')

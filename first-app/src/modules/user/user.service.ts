@@ -4,24 +4,71 @@ import {
   Injectable,
   NotFoundException,
   Logger,
+  Inject,
+  Optional,
+  OnApplicationBootstrap,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Types } from 'mongoose';
 import { UserRepo } from '../../models/user/user.repository';
 import { MainOrderRepo } from '../../models/order/main-order.repository';
 import { FileUploadsService } from '../../shared/file-uploads/file-uploads.service';
+import { SessionRepo } from '../../models/session/session.repository';
+import {
+  CACHE_SERVICE,
+  ICacheService,
+} from '../../shared/cache/interfaces/cache-service.interface';
+import { serializeSafeUser, serializeSafeUsers } from '../../common/utils/safe-user.serializer';
+import {
+  parseAndValidateTokenVersion,
+  syncTokenVersionToCache,
+} from '../../common/utils/token-version.util';
+import { RolesEnum } from '../../common/enums/roles';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
-export class UserService {
+export class UserService implements OnApplicationBootstrap {
   private readonly logger = new Logger(UserService.name);
 
   constructor(
     private readonly userRepo: UserRepo,
     private readonly mainOrderRepo: MainOrderRepo,
     private readonly fileUploadsService: FileUploadsService,
+    @Optional() private readonly sessionRepo?: SessionRepo,
+    @Optional()
+    @Inject(CACHE_SERVICE)
+    private readonly cacheService?: ICacheService,
   ) {}
+
+  /**
+   * Safe inline database normalization hook: ensures all legacy users in MongoDB
+   * with mixed-case or uppercase roles are normalized to canonical lowercase.
+   */
+  async onApplicationBootstrap() {
+    try {
+      if (this.userRepo && typeof this.userRepo.updateMany === 'function') {
+        await this.userRepo.updateMany(
+          { role: { $regex: /^seller$/i, $ne: RolesEnum.SELLER } },
+          { $set: { role: RolesEnum.SELLER } },
+        );
+        await this.userRepo.updateMany(
+          { role: { $regex: /^admin$/i, $ne: RolesEnum.ADMIN } },
+          { $set: { role: RolesEnum.ADMIN } },
+        );
+        await this.userRepo.updateMany(
+          { role: { $regex: /^customer$/i, $ne: RolesEnum.CUSTOMER } },
+          { $set: { role: RolesEnum.CUSTOMER } },
+        );
+        await this.userRepo.updateMany(
+          { role: { $regex: /^company_admin$/i, $ne: RolesEnum.COMPANY_ADMIN } },
+          { $set: { role: RolesEnum.COMPANY_ADMIN } },
+        );
+      }
+    } catch {
+      // Non-blocking during mock testing or before connection is established
+    }
+  }
 
   /**
    * جلب بيانات الملف الشخصي، العناوين، وسجل الطلبات
@@ -44,13 +91,7 @@ export class UserService {
       { sort: { createdAt: -1 } },
     );
 
-    const rawUser = (userDoc as any).toObject ? (userDoc as any).toObject() : userDoc;
-    const {
-      password,
-      emailVerificationOtpHash,
-      emailVerificationOtpExpiresAt,
-      ...safeUser
-    } = rawUser;
+    const safeUser = serializeSafeUser(userDoc);
 
     return {
       success: true,
@@ -108,10 +149,7 @@ export class UserService {
       { new: true },
     );
 
-    const rawUser = (updatedUser as any).toObject
-      ? (updatedUser as any).toObject()
-      : updatedUser;
-    const { password, ...safeUser } = rawUser;
+    const safeUser = serializeSafeUser(updatedUser);
 
     return {
       success: true,
@@ -121,7 +159,7 @@ export class UserService {
   }
 
   /**
-   * تغيير كلمة المرور للمستخدم المسجل
+   * تغيير كلمة المرور للمستخدم المسجل وإلغاء صلاحية الجلسات النشطة
    */
   async changePassword(userId: string, dto: ChangePasswordDto) {
     if (!Types.ObjectId.isValid(userId)) {
@@ -147,14 +185,53 @@ export class UserService {
     const saltRounds = 10;
     const newHashedPassword = await bcrypt.hash(dto.newPassword, saltRounds);
 
-    await this.userRepo.updateOne(
+    // تحديث كلمة المرور وزيادة tokenVersion في قاعدة البيانات ذرياً
+    const updatedUser = await this.userRepo.updateOne(
       { _id: objectId },
-      { password: newHashedPassword },
+      {
+        $inc: { tokenVersion: 1 },
+        $set: { password: newHashedPassword },
+      },
+      { new: true },
     );
+
+    const newVersion = parseAndValidateTokenVersion(
+      (updatedUser as any)?.tokenVersion !== undefined
+        ? (updatedUser as any).tokenVersion
+        : parseAndValidateTokenVersion((user as any).tokenVersion) + 1,
+    );
+
+    // تحديث tokenVersion في الكاش (Redis) لإلغاء جميع Access Tokens الحالية
+    if (this.cacheService) {
+      try {
+        const idStr = objectId.toString();
+        await syncTokenVersionToCache(this.cacheService, idStr, newVersion);
+      } catch (cacheErr: any) {
+        this.logger.warn(`Failed to update cache tokenVersion for user ${userId}: ${cacheErr?.message}`);
+      }
+    }
+
+    // إلغاء جميع جلسات المستخدم النشطة في SessionRepo لإلغاء Refresh Tokens
+    if (this.sessionRepo) {
+      try {
+        await this.sessionRepo.updateMany(
+          { userId: objectId, isRevoked: false },
+          {
+            $set: {
+              isRevoked: true,
+              activeTokenHash: '',
+              revocationReason: 'PASSWORD_CHANGED',
+            },
+          },
+        );
+      } catch (sessionErr: any) {
+        this.logger.error(`Failed to revoke sessions for user ${userId}: ${sessionErr?.message}`);
+      }
+    }
 
     return {
       success: true,
-      message: 'تم تغيير كلمة المرور بنجاح',
+      message: 'تم تغيير كلمة المرور بنجاح وإلغاء جميع الجلسات السابقة',
     };
   }
 
@@ -162,6 +239,10 @@ export class UserService {
    * تحديث صورة الملف الشخصي
    */
   async updateProfilePic(userId: string, profilePicKey: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('معرف المستخدم غير صالح');
+    }
+
     const objectId = new Types.ObjectId(userId);
 
     const currentUser = await this.userRepo.getOne({ _id: objectId });
@@ -188,7 +269,9 @@ export class UserService {
       }
     }
 
-    return updatedUser;
+    const safeUser = serializeSafeUser(updatedUser);
+
+    return safeUser;
   }
 
   /**
@@ -202,15 +285,6 @@ export class UserService {
     const users = await this.userRepo.getAll(filter, undefined, {
       sort: { createdAt: -1 },
     });
-    return users.map((u: any) => {
-      const raw = u.toObject ? u.toObject() : u;
-      const {
-        password,
-        emailVerificationOtpHash,
-        emailVerificationOtpExpiresAt,
-        ...safe
-      } = raw;
-      return safe;
-    });
+    return serializeSafeUsers(users);
   }
 }

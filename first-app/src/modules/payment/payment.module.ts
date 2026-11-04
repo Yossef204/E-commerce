@@ -9,6 +9,7 @@ import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mo
 import { UserMongoModule } from '../../shared/modules/user.mongo.module';
 import { InventoryMongoModule } from '../../shared/modules/inventory.mongo.module';
 import { PaymentService } from './payment.service';
+import { PaymobService } from './paymob.service';
 import { PaymentController } from './payment.controller';
 import { PaymentFactory } from './factory/payment.factory';
 
@@ -29,7 +30,7 @@ import { SharedPaymentModule } from '../../shared/payment/shared-payment.module'
     JwtModule,
   ],
   controllers: [PaymentController, PaymentWebhookController],
-  providers: [PaymentService, PaymentFactory],
-  exports: [PaymentService],
+  providers: [PaymentService, PaymentFactory, PaymobService],
+  exports: [PaymentService, PaymobService],
 })
 export class PaymentModule {}

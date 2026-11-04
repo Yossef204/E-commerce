@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
+import * as supertest from 'supertest';
+const request = (supertest as any).default || supertest;
 import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 

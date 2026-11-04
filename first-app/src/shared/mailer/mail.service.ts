@@ -1,10 +1,17 @@
-import { ISendMailOptions, MailerService } from '@nestjs-modules/mailer';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  IMailerService,
+  MAILER_SERVICE,
+  SendMailOptions,
+} from './interfaces/mailer.interface';
 
 @Injectable()
-export class MailService {
-  constructor(private readonly mailerService: MailerService) {}
-  async send(options: ISendMailOptions) {
-    await this.mailerService.sendMail(options);
+export class MailService implements IMailerService {
+  constructor(
+    @Inject(MAILER_SERVICE) private readonly mailer: IMailerService,
+  ) {}
+
+  async send(options: SendMailOptions): Promise<void> {
+    await this.mailer.send(options);
   }
 }

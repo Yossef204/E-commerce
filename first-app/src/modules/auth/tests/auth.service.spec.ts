@@ -9,6 +9,8 @@ import { getModelToken } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { CACHE_SERVICE } from '../../../shared/cache/interfaces/cache-service.interface';
+import { MAILER_SERVICE } from '../../../shared/mailer/interfaces/mailer.interface';
 import { Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 
@@ -70,6 +72,7 @@ describe('AuthService', () => {
       getAll: jest.fn().mockResolvedValue([]),
       create: jest.fn().mockImplementation((data) => Promise.resolve({ _id: mockSessionId, ...data })),
       updateOne: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
+      updateMany: jest.fn().mockResolvedValue({ modifiedCount: 1 }),
     };
 
     jwtService = {
@@ -79,6 +82,12 @@ describe('AuthService', () => {
         sub: mockUserId.toString(),
         id: mockUserId.toString(),
         tokenVersion: 1,
+        tokenType: 'refresh',
+        purpose: 'password_reset',
+        email: 'user@example.com',
+      }),
+      verifyAsync: jest.fn().mockImplementation((token: string, opts?: any) => {
+        return Promise.resolve(jwtService.verify(token, opts));
       }),
     };
 
@@ -130,10 +139,12 @@ describe('AuthService', () => {
         { provide: SessionRepo, useValue: sessionRepo },
         { provide: JwtService, useValue: jwtService },
         { provide: MailService, useValue: mailService },
+        { provide: MAILER_SERVICE, useValue: mailService },
         { provide: ConfigService, useValue: configService },
         { provide: PermissionRepo, useValue: permissionRepo },
         { provide: SellingEntityRepo, useValue: sellingEntityRepo },
         { provide: CACHE_MANAGER, useValue: cacheManager },
+        { provide: CACHE_SERVICE, useValue: cacheManager },
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(SellingEntity.name), useValue: {} },
       ],
@@ -412,6 +423,7 @@ describe('AuthService', () => {
         sub: mockUserId.toString(),
         id: mockUserId.toString(),
         tokenVersion: 1,
+        tokenType: 'refresh',
       });
 
       userRepo.getOne.mockResolvedValue(mockUser);
@@ -431,6 +443,7 @@ describe('AuthService', () => {
         sub: mockUserId.toString(),
         id: mockUserId.toString(),
         tokenVersion: 1,
+        tokenType: 'refresh',
       });
 
       userRepo.getOne.mockResolvedValue(mockUser);
@@ -439,13 +452,20 @@ describe('AuthService', () => {
       const mockActiveSession = {
         _id: mockSessionId,
         userId: mockUserId,
+        activeTokenHash: 'b4a8e6308cf26244',
         refreshTokenHash: 'hashed_valid_refresh_token',
+        consumedTokenHashes: [],
         isRevoked: false,
         deviceInfo: 'Mozilla/5.0',
         ipAddress: '127.0.0.1',
       };
 
+      sessionRepo.getOne.mockImplementation((query: any) => {
+        if (query.consumedTokenHashes) return Promise.resolve(null);
+        return Promise.resolve(mockActiveSession);
+      });
       sessionRepo.getAll.mockResolvedValue([mockActiveSession]);
+      sessionRepo.updateOne.mockResolvedValue(mockActiveSession);
       jest.spyOn(bcrypt, 'compare').mockImplementation(() => Promise.resolve(true as never));
       jest.spyOn(bcrypt, 'hash').mockImplementation(() => Promise.resolve('new_hashed_refresh_token' as never));
 
@@ -456,18 +476,13 @@ describe('AuthService', () => {
       expect(result.accessToken).toBe('mock_jwt_token_async');
       expect(result.refreshToken).toBe('mock_jwt_token_async');
 
-      // Old session was revoked
       expect(sessionRepo.updateOne).toHaveBeenCalledWith(
-        { _id: mockSessionId },
-        { isRevoked: true },
-      );
-
-      // New session was recorded
-      expect(sessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ _id: mockSessionId, isRevoked: false }),
         expect.objectContaining({
-          userId: mockUserId,
-          isRevoked: false,
+          $set: expect.objectContaining({ activeTokenHash: expect.any(String) }),
+          $push: expect.objectContaining({ consumedTokenHashes: expect.anything() }),
         }),
+        expect.anything(),
       );
     });
   });

@@ -7,6 +7,9 @@ import {
   Param,
   Delete,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
+  Request,
   HttpStatus,
 } from '@nestjs/common';
 import {
@@ -26,6 +29,7 @@ import { PermissionEnum } from '../../common/enums/permissions.enum';
 @ApiTags('Permissions & User Management')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(AuthenticationGuard)
+@UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
 @Controller('permissions')
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
@@ -37,8 +41,11 @@ export class PermissionsController {
     description: 'Defines a custom access control rule for user or role',
   })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Permission created' })
-  create(@Body() createPermissionDto: CreatePermissionDto) {
-    return this.permissionsService.create(createPermissionDto);
+  create(
+    @Body() createPermissionDto: CreatePermissionDto,
+    @Request() req: any,
+  ) {
+    return this.permissionsService.create(createPermissionDto, req?.user);
   }
 
   @permissions(PermissionEnum.USER_MANAGE)
@@ -84,8 +91,9 @@ export class PermissionsController {
   update(
     @Param('id') id: string,
     @Body() updatePermissionDto: UpdatePermissionDto,
+    @Request() req: any,
   ) {
-    return this.permissionsService.update(id, updatePermissionDto);
+    return this.permissionsService.update(id, updatePermissionDto, req?.user);
   }
 
   @permissions(PermissionEnum.USER_MANAGE)
@@ -93,7 +101,7 @@ export class PermissionsController {
   @ApiOperation({ summary: 'Delete permission rule' })
   @ApiParam({ name: 'id', description: 'Permission ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Permission deleted' })
-  remove(@Param('id') id: string) {
-    return this.permissionsService.remove(id);
+  remove(@Param('id') id: string, @Request() req: any) {
+    return this.permissionsService.remove(id, req?.user);
   }
 }

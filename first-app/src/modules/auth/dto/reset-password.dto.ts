@@ -1,16 +1,22 @@
-import { IsEmail, IsNotEmpty, Length, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsNotEmpty, IsString, Matches, MinLength } from 'class-validator';
 
 export class ResetPasswordDto {
-  @IsNotEmpty({ message: 'البريد الإلكتروني مطلوب' })
-  @IsEmail({}, { message: 'صيغة البريد الإلكتروني غير صحيحة' })
-  email: string;
-
-  @IsNotEmpty({ message: 'رمز التحقق مطلوب' })
-  @Length(6, 6, { message: 'يجب أن يتكون رمز التحقق من 6 أرقام' })
-  otp: string;
-
+  @ApiProperty({
+    example: 'NewSecurePassword@123!',
+    description:
+      'كلمة المرور الجديدة (يجب أن تحتوي على حرف كبير، حرف صغير، رقم، ورمز خاص، وألا تقل عن 8 أحرف)',
+    minLength: 8,
+  })
+  @IsString({ message: 'كلمة المرور يجب أن تكون نصاً' })
   @IsNotEmpty({ message: 'كلمة المرور الجديدة مطلوبة' })
-  @MinLength(6, { message: 'يجب ألا تقل كلمة المرور عن 6 أحرف أو أرقام' })
+  @MinLength(8, { message: 'يجب ألا تقل كلمة المرور عن 8 أحرف أو أرقام' })
+  @Matches(
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&_\-#])[A-Za-z\d@$!%*?&_\-#]{8,}$/,
+    {
+      message:
+        'يجب أن تحتوي كلمة المرور على حرف كبير، وحرف صغير، ورقم، ورمز خاص واحد على الأقل',
+    },
+  )
   newPassword: string;
 }
-

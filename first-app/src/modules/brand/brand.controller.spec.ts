@@ -90,14 +90,15 @@ describe('BrandController', () => {
         image: 'https://example.com/sony.png',
         categoryId: [mockCategoryId.toString()],
       };
+      const mockReq = { user: { role: 'admin', sellingEntityId: null } };
 
       brandFactory.createBrand.mockReturnValue(mockBrand);
       brandService.create.mockResolvedValue(mockBrand);
 
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, mockReq);
 
-      expect(brandFactory.createBrand).toHaveBeenCalledWith(dto);
-      expect(brandService.create).toHaveBeenCalledWith(mockBrand);
+      expect(brandFactory.createBrand).toHaveBeenCalledWith(dto, null);
+      expect(brandService.create).toHaveBeenCalledWith(mockBrand, mockReq.user);
       expect(result).toEqual({
         message: 'Brand Created Successfully',
         success: true,
@@ -107,47 +108,79 @@ describe('BrandController', () => {
   });
 
   describe('findAll', () => {
-    it('should return all brands', () => {
-      brandService.findAll.mockReturnValue('This action returns all brand');
+    it('should return paginated brands list', async () => {
+      const mockList = {
+        success: true,
+        data: [mockBrand],
+        meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
+      };
+      brandService.findAll.mockResolvedValue(mockList);
 
-      const result = controller.findAll();
+      const result = await controller.findAll('1', '10', 'sony');
 
-      expect(brandService.findAll).toHaveBeenCalled();
-      expect(result).toBe('This action returns all brand');
+      expect(brandService.findAll).toHaveBeenCalledWith({
+        page: 1,
+        limit: 10,
+        search: 'sony',
+      });
+      expect(result).toEqual(mockList);
     });
   });
 
   describe('findOne', () => {
-    it('should return brand by numeric id', () => {
-      brandService.findOne.mockReturnValue('This action returns a #1 brand');
+    it('should return brand by valid ObjectId', async () => {
+      brandService.findOne.mockResolvedValue(mockBrand);
 
-      const result = controller.findOne('1');
+      const result = await controller.findOne(mockBrandId.toString());
 
-      expect(brandService.findOne).toHaveBeenCalledWith(1);
-      expect(result).toBe('This action returns a #1 brand');
+      expect(brandService.findOne).toHaveBeenCalledWith(mockBrandId.toString());
+      expect(result).toEqual(mockBrand);
+    });
+
+    it('should throw BadRequestException on invalid ObjectId format', async () => {
+      await expect(controller.findOne('invalid-id')).rejects.toThrow();
+      expect(brandService.findOne).not.toHaveBeenCalled();
     });
   });
 
   describe('update', () => {
-    it('should update brand by numeric id', () => {
-      const dto: UpdateBrandDto = {};
-      brandService.update.mockReturnValue('This action updates a #1 brand');
+    it('should update brand by valid ObjectId', async () => {
+      const dto: UpdateBrandDto = { name: 'Sony Updated' };
+      const updatedBrand = { ...mockBrand, name: 'Sony Updated' };
+      brandService.update.mockResolvedValue(updatedBrand);
 
-      const result = controller.update('1', dto);
+      const result = await controller.update(mockBrandId.toString(), dto);
 
-      expect(brandService.update).toHaveBeenCalledWith(1, dto);
-      expect(result).toBe('This action updates a #1 brand');
+      expect(brandService.update).toHaveBeenCalledWith(
+        mockBrandId.toString(),
+        dto,
+      );
+      expect(result).toEqual(updatedBrand);
+    });
+
+    it('should throw BadRequestException on invalid ObjectId format', async () => {
+      await expect(controller.update('bad-id', {})).rejects.toThrow();
+      expect(brandService.update).not.toHaveBeenCalled();
     });
   });
 
   describe('remove', () => {
-    it('should remove brand by numeric id', () => {
-      brandService.remove.mockReturnValue('This action removes a #1 brand');
+    it('should remove brand by valid ObjectId', async () => {
+      const deleteResult = {
+        success: true,
+        message: 'Brand deleted successfully',
+      };
+      brandService.remove.mockResolvedValue(deleteResult);
 
-      const result = controller.remove('1');
+      const result = await controller.remove(mockBrandId.toString());
 
-      expect(brandService.remove).toHaveBeenCalledWith(1);
-      expect(result).toBe('This action removes a #1 brand');
+      expect(brandService.remove).toHaveBeenCalledWith(mockBrandId.toString());
+      expect(result).toEqual(deleteResult);
+    });
+
+    it('should throw BadRequestException on invalid ObjectId format', async () => {
+      await expect(controller.remove('bad-id')).rejects.toThrow();
+      expect(brandService.remove).not.toHaveBeenCalled();
     });
   });
 });

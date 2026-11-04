@@ -6,6 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "tunnel": "ts-node src/scripts/tunnel.ts",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
@@ -17,7 +18,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js --config ./test/jest-e2e.json --runInBand",
+    "tunnel": "ts-node scripts/tunnel.ts"
   },
   "dependencies": {
     "@apollo/server": "^4.11.3",
@@ -39,6 +41,7 @@
     "@nestjs/platform-socket.io": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/websockets": "^11.0.0",
+    "@ngrok/ngrok": "^1.7.0",
     "bcrypt": "^6.0.0",
     "cache-manager": "^7.2.9",
     "cache-manager-redis-store": "^3.0.1",

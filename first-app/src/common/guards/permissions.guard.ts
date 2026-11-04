@@ -17,9 +17,12 @@ import {
   Permission,
   PermissionEnum,
   getDefaultPermissionsForRole,
+  DEFAULT_SUPER_ADMIN_PERMISSIONS,
 } from '../enums/permissions.enum';
 import { RolesEnum } from '../enums/roles';
 import { IS_PUBLIC } from '../decorators/public.decorator';
+import { ALLOW_PENDING_ENTITY_KEY } from '../decorators/allow-pending-entity.decorator';
+import { evaluateSuperAdminStatus } from '../utils/super-admin.policy';
 
 // Bidirectional equivalence mappings for canonical permissions and legacy variants
 const CANONICAL_EQUIVALENCES: Record<string, string[]> = {
@@ -61,7 +64,18 @@ const CANONICAL_EQUIVALENCES: Record<string, string[]> = {
   [Permission.COMMISSION_MANAGE]: ['commissions.manage', 'commission.manage'],
   [Permission.USER_MANAGE]: ['user.manage', 'entity.users_manage'],
   [Permission.CATEGORY_MANAGE]: ['category.manage'],
-  [Permission.BRAND_MANAGE]: ['brand.manage'],
+  [Permission.BRAND_MANAGE]: [
+    'brand.manage',
+    'brand.manage_all',
+    'brand.manage.all',
+    'brand.create.own',
+    'brand.update.own',
+    'brand.delete.own',
+  ],
+  [Permission.BRAND_MANAGE_ALL]: ['brand.manage.all', 'brand.manage_all', 'brand.manage'],
+  [Permission.BRAND_CREATE_OWN]: ['brand.create.own', 'brand.manage', 'brand.manage.all'],
+  [Permission.BRAND_UPDATE_OWN]: ['brand.update.own', 'brand.manage', 'brand.manage.all'],
+  [Permission.BRAND_DELETE_OWN]: ['brand.delete.own', 'brand.manage', 'brand.manage.all'],
   [Permission.SETTINGS_MANAGE]: ['settings.manage'],
   [Permission.REVIEW_CREATE]: ['reviews.create'],
   [Permission.REVIEW_MODERATE]: ['review.moderate'],
@@ -158,19 +172,45 @@ export class PermissionsGuard implements CanActivate {
       throw new UnauthorizedException('Authentication required');
     }
 
+    const userId = user.id || user.sub || user._id;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid user credentials');
+    }
+
+    // 1. Authoritative Server-Side Account & Super Admin Verification
+    // Never trust raw JWT role or permission claims without trusted database verification.
+    if (!this.connection || (this.connection.readyState !== undefined && this.connection.readyState !== 1)) {
+      throw new ForbiddenException('Security verification failed: Database unavailable');
+    }
+
+    const evalResult = await evaluateSuperAdminStatus(userId, this.connection);
+    if (!evalResult.userExists) {
+      if (evalResult.status === 'DATABASE_ERROR') {
+        throw new ForbiddenException('Security verification failed: Database lookup error');
+      }
+      throw new UnauthorizedException('User account not found');
+    }
+
+    // Enforce Account Lifecycle Rules (Fail closed on inactive/blocked accounts)
+    if (!evalResult.isActive) {
+      if (evalResult.status === 'BLOCKED') {
+        throw new ForbiddenException('تم حظر هذا الحساب من قبل إدارة المنصة');
+      }
+      if (evalResult.status === 'SUSPENDED') {
+        throw new ForbiddenException('هذا الحساب معلق حالياً');
+      }
+      if (evalResult.status === 'DEACTIVATED') {
+        throw new ForbiddenException('هذا الحساب معطل حالياً');
+      }
+      throw new ForbiddenException(`الحساب غير نشط (الحالة: ${evalResult.status})`);
+    }
+
+    // Anti-Spoofing: Overwrite untrusted JWT role with verified database role
+    user.role = evalResult.role;
     const roleUpper = (user.role || '').toUpperCase().trim();
     const roleLower = (user.role || '').toLowerCase().trim();
 
-    // 1. Super Admin bypass (SUPER_ADMIN, super_admin, superadmin)
-    const isSuperAdmin =
-      roleUpper === 'SUPER_ADMIN' ||
-      roleLower === 'super_admin' ||
-      roleLower === 'superadmin' ||
-      roleLower === RolesEnum.SUPER_ADMIN.toLowerCase();
-
-    if (isSuperAdmin) {
-      return true;
-    }
+    const isVerifiedSuperAdmin = evalResult.isSuperAdmin;
 
     // 2. Merchant Role Identification (Seller & Company Admin)
     const isSellerRole =
@@ -182,7 +222,6 @@ export class PermissionsGuard implements CanActivate {
       roleLower === RolesEnum.COMPANY_ADMIN.toLowerCase();
 
     if (isSellerRole) {
-      const userId = user.id || user.sub || user._id;
       if ((!user.sellingEntityId || !user.entityStatus) && userId && this.connection) {
         try {
           const sellingEntityModel = this.connection.models['SellingEntity'];
@@ -208,11 +247,17 @@ export class PermissionsGuard implements CanActivate {
       }
 
       // CRITICAL SECURITY ENFORCEMENT: Enforce APPROVED Status for commercial operations
+      const allowPending = this.reflector.getAllAndOverride<boolean>(
+        ALLOW_PENDING_ENTITY_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+
       const entityStatus = (user.entityStatus || '').toUpperCase().trim();
       if (
-        entityStatus === 'PENDING_APPROVAL' ||
-        entityStatus === 'SUSPENDED' ||
-        entityStatus === 'REJECTED'
+        !allowPending &&
+        (entityStatus === 'PENDING_APPROVAL' ||
+          entityStatus === 'SUSPENDED' ||
+          entityStatus === 'REJECTED')
       ) {
         const hasRestrictedOperation = requiredPermissions.some((perm) => {
           const permStr = String(perm);
@@ -235,34 +280,21 @@ export class PermissionsGuard implements CanActivate {
     const defaultPerms = (getDefaultPermissionsForRole(user.role || RolesEnum.CUSTOMER) as string[]) || [];
     let tokenPerms = Array.isArray(user.permissions) ? user.permissions : [];
 
-    // Platform Admin (ADMIN): Retrieve permissions from DB if not in token
-    const isPlatformAdmin = roleUpper === 'ADMIN' || roleLower === 'admin' || roleLower === RolesEnum.ADMIN.toLowerCase();
-    if (isPlatformAdmin && tokenPerms.length === 0 && this.connection) {
-      const userId = user.id || user.sub || user._id;
-      if (userId && Types.ObjectId.isValid(userId)) {
-        try {
-          const userModel = this.connection.models['User'];
-          if (userModel) {
-            const adminDoc = await userModel.findById(userId).lean();
-            if (adminDoc && Array.isArray((adminDoc as any).permissions)) {
-              tokenPerms = (adminDoc as any).permissions;
-              user.permissions = tokenPerms;
-            }
-          }
-          if (tokenPerms.length === 0) {
-            const permModel = this.connection.models['Permission'];
-            if (permModel) {
-              const permDoc = await permModel.findOne({ userId: new Types.ObjectId(userId) }).lean();
-              if (permDoc && Array.isArray((permDoc as any).permissions)) {
-                tokenPerms = (permDoc as any).permissions;
-                user.permissions = tokenPerms;
-              }
-            }
-          }
-        } catch {
-          // silently continue
-        }
+    if (isVerifiedSuperAdmin) {
+      // Verified Super Admin is granted all canonical platform permissions
+      tokenPerms = Array.from(
+        new Set([...tokenPerms, ...evalResult.permissions, ...DEFAULT_SUPER_ADMIN_PERMISSIONS]),
+      );
+      user.permissions = tokenPerms;
+    } else {
+      // Anti-Spoofing: Strip platform.super_admin from unauthorized callers
+      tokenPerms = tokenPerms.filter(
+        (p: string) => p !== Permission.PLATFORM_SUPER_ADMIN && p !== 'platform.super_admin',
+      );
+      if (evalResult.permissions.length > 0) {
+        tokenPerms = Array.from(new Set([...tokenPerms, ...evalResult.permissions]));
       }
+      user.permissions = tokenPerms;
     }
 
     const userPermissions = new Set<string>([...tokenPerms, ...defaultPerms]);

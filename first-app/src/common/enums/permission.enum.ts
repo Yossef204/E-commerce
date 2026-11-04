@@ -83,6 +83,10 @@ export enum Permission {
   // Administration & Platform Infrastructure
   CATEGORY_MANAGE = 'category.manage',
   BRAND_MANAGE = 'brand.manage',
+  BRAND_MANAGE_ALL = 'brand.manage.all',
+  BRAND_CREATE_OWN = 'brand.create.own',
+  BRAND_UPDATE_OWN = 'brand.update.own',
+  BRAND_DELETE_OWN = 'brand.delete.own',
   SETTINGS_MANAGE = 'settings.manage',
   AUDIT_LOG_READ = 'audit_log.read',
   FILE_UPLOAD = 'file.upload',

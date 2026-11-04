@@ -41,6 +41,8 @@ export class User {
     type: String,
     enum: Object.values(RolesEnum),
     default: RolesEnum.CUSTOMER,
+    lowercase: true,
+    trim: true,
   })
   role: RolesEnum;
 
@@ -67,6 +69,9 @@ export class User {
     index: true,
   })
   sellingEntityId?: Types.ObjectId;
+
+  @Prop({ type: Number, default: 1 })
+  tokenVersion: number;
 }
 
 export const userSchema = SchemaFactory.createForClass(User);

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SellingEntityController } from './selling-entity.controller';
+import { MerchantController } from './merchant.controller';
 import { SellingEntityService } from './selling-entity.service';
 import { SellingEntityFactory } from './factory/selling-entity.factory';
 import { SellingEntityMongoModule } from '../../shared/modules/selling-entity.mongo.module';
@@ -24,7 +25,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
     PermissionsModule,
     JwtModule,
   ],
-  controllers: [SellingEntityController],
+  controllers: [SellingEntityController, MerchantController],
   providers: [SellingEntityService, SellingEntityFactory],
   exports: [SellingEntityService],
 })

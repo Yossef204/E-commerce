@@ -144,6 +144,9 @@ export const DEFAULT_SELLER_PERMISSIONS: Permission[] = [
   Permission.PAYOUT_REQUEST,
   Permission.COUPON_MANAGE_OWN,
   Permission.ANALYTICS_READ_OWN,
+  Permission.BRAND_CREATE_OWN,
+  Permission.BRAND_UPDATE_OWN,
+  Permission.BRAND_DELETE_OWN,
 ];
 
 export const DEFAULT_COMPANY_ADMIN_PERMISSIONS: Permission[] = [

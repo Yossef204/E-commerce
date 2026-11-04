@@ -117,6 +117,7 @@ export class ProductService {
 
       const brand = await this.brandRepo.getOne({
         _id: new Types.ObjectId(createProductDto.brandId),
+        isDeleted: { $ne: true },
       });
 
       if (!brand) {
@@ -124,7 +125,7 @@ export class ProductService {
       }
 
       if (
-        !brand.sellingEntityId ||
+        brand.sellingEntityId &&
         brand.sellingEntityId.toString() !== entityIdStr
       ) {
         throw new ForbiddenException(
@@ -593,8 +594,27 @@ export class ProductService {
       updateData.description = updateProductDto.description;
     if (updateProductDto.categoryId)
       updateData.categoryId = new Types.ObjectId(updateProductDto.categoryId);
-    if (updateProductDto.brandId)
+    if (updateProductDto.brandId) {
+      if (!Types.ObjectId.isValid(updateProductDto.brandId)) {
+        throw new BadRequestException('Invalid brand ID format');
+      }
+      const brand = await this.brandRepo.getOne({
+        _id: new Types.ObjectId(updateProductDto.brandId),
+        isDeleted: { $ne: true },
+      });
+      if (!brand) {
+        throw new NotFoundException('Specified brand not found');
+      }
+      if (
+        brand.sellingEntityId &&
+        brand.sellingEntityId.toString() !== product.sellingEntityId.toString()
+      ) {
+        throw new ForbiddenException(
+          'Specified brand does not belong to your selling entity',
+        );
+      }
       updateData.brandId = new Types.ObjectId(updateProductDto.brandId);
+    }
     if (updateProductDto.variants)
       updateData.variants = updateProductDto.variants;
 

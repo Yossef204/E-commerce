@@ -6,11 +6,20 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { Connection, Types } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import {
+  CACHE_SERVICE,
+  ICacheService,
+} from '../../shared/cache/interfaces/cache-service.interface';
+import {
+  MAILER_SERVICE,
+  IMailerService,
+} from '../../shared/mailer/interfaces/mailer.interface';
 import { MainOrderRepo } from '../../models/order/main-order.repository';
 import { EntityOrderRepo } from '../../models/order/entity-order.repository';
 import { InventoryRepo } from '../../models/inventory/inventory.repository';
@@ -60,7 +69,6 @@ export class OrderService {
 
   constructor(
     @InjectConnection() private readonly connection: Connection,
-    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
     private readonly mainOrderRepo: MainOrderRepo,
     private readonly entityOrderRepo: EntityOrderRepo,
     private readonly inventoryRepo: InventoryRepo,
@@ -75,8 +83,45 @@ export class OrderService {
     private readonly eventEmitter: EventEmitter2,
     private readonly couponService: CouponService,
     private readonly notificationService: NotificationService,
-    private readonly mailService: MailService,
+    @Optional() @Inject(CACHE_SERVICE) private readonly cacheService?: ICacheService,
+    @Optional() @Inject(CACHE_MANAGER) private readonly cacheManagerInstance?: Cache,
+    @Optional() @Inject(MAILER_SERVICE) private readonly mailerService?: IMailerService,
+    @Optional() private readonly mailServiceInstance?: MailService,
   ) {}
+
+  private get cacheManager(): any {
+    if (this.cacheService) {
+      return {
+        get: (k: string) => this.cacheService!.get(k),
+        set: (k: string, v: any, ttl?: number) => {
+          const ttlSec =
+            ttl !== undefined
+              ? ttl >= 1000
+                ? Math.round(ttl / 1000)
+                : ttl
+              : undefined;
+          return this.cacheService!.set(k, v, ttlSec);
+        },
+        del: (k: string) => this.cacheService!.del(k),
+      };
+    }
+    return (
+      this.cacheManagerInstance || {
+        get: async () => null,
+        set: async () => {},
+        del: async () => {},
+      }
+    );
+  }
+
+  private get mailService(): any {
+    return (
+      this.mailerService ||
+      this.mailServiceInstance || {
+        send: async () => {},
+      }
+    );
+  }
 
   private sendCodOtpEmailAsync(
     to: string,

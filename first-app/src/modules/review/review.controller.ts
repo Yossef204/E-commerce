@@ -16,6 +16,8 @@ import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
 import { Public } from '../../common/decorators/public.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Reviews')
 @Controller('reviews')
@@ -25,6 +27,7 @@ export class ReviewController {
   /**
    * Create verified purchase review
    */
+  @Auditable({ targetEntity: 'Review', action: AuditActionEnum.CREATE })
   @ApiBearerAuth('JWT-auth')
   @UseGuards(AuthenticationGuard)
   @permissions(Permission.REVIEW_CREATE)

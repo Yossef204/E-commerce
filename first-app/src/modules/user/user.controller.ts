@@ -26,12 +26,15 @@ import { AuthenticationGuard } from '../../common/guards/authentication.guard';
 import { User } from '../../common/decorators/user.decorators';
 import { permissions } from '../../common/decorators/permissions.decorator';
 import { Permission } from '../../common/enums/permission.enum';
+import { AllowPendingEntity } from '../../common/decorators/allow-pending-entity.decorator';
+import { Auditable } from '../../common/decorators/auditable.decorator';
+import { AuditActionEnum } from '../../common/enums/audit-action.enum';
 
 @ApiTags('Permissions & User Management')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(AuthenticationGuard)
 @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
-@Controller(['users', 'user'])
+@Controller('users')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
@@ -58,6 +61,7 @@ export class UserController {
   /**
    * جلب بيانات الملف الشخصي، العناوين، وسجل الطلبات
    */
+  @AllowPendingEntity()
   @permissions(Permission.PROFILE_READ)
   @Get('profile')
   @HttpCode(HttpStatus.OK)
@@ -74,6 +78,12 @@ export class UserController {
   /**
    * تحديث الاسم، رقم الهاتف، والعناوين
    */
+  @Auditable({
+    targetEntity: 'User',
+    action: AuditActionEnum.UPDATE_PROFILE,
+    targetIdExtractor: (req) => req.user?.id || req.user?.sub || req.params?.id,
+  })
+  @AllowPendingEntity()
   @permissions(Permission.PROFILE_UPDATE)
   @Patch('profile')
   @HttpCode(HttpStatus.OK)
@@ -94,6 +104,12 @@ export class UserController {
   /**
    * تغيير كلمة المرور للمستخدم المسجل
    */
+  @Auditable({
+    targetEntity: 'User',
+    action: AuditActionEnum.CHANGE_PASSWORD,
+    targetIdExtractor: (req) => req.user?.id || req.user?.sub,
+  })
+  @AllowPendingEntity()
   @permissions(Permission.PROFILE_UPDATE)
   @Patch('change-password')
   @HttpCode(HttpStatus.OK)
@@ -114,6 +130,12 @@ export class UserController {
   /**
    * تحديث صورة الملف الشخصي
    */
+  @Auditable({
+    targetEntity: 'User',
+    action: AuditActionEnum.UPDATE_PROFILE,
+    targetIdExtractor: (req) => req.user?.id || req.user?.sub,
+  })
+  @AllowPendingEntity()
   @permissions(Permission.PROFILE_UPDATE)
   @Patch('profile-pic')
   @HttpCode(HttpStatus.OK)

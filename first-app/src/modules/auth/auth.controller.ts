@@ -23,6 +23,7 @@ import { isPublic, Public } from '../../common/decorators/public.decorator';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { RateLimiterGuard } from '../../common/guards/rate-limiter.guard';
 import { AuthenticationGuard } from '../../common/guards/authentication.guard';
+import { ResetTokenGuard } from './guards/reset-token.guard';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('Authentication')
@@ -133,6 +134,8 @@ export class AuthController {
 
   @isPublic()
   @Public()
+  @UseGuards(RateLimiterGuard)
+  @RateLimit({ limit: 5, ttlSeconds: 60, keyPrefix: 'auth_forgot_password', trackBy: 'ip_and_body' })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset OTP' })
@@ -143,21 +146,67 @@ export class AuthController {
 
   @isPublic()
   @Public()
+  @UseGuards(RateLimiterGuard)
+  @RateLimit({ limit: 5, ttlSeconds: 300, keyPrefix: 'auth_verify_reset_otp', trackBy: 'ip_and_body' })
   @Post('verify-reset-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify reset password OTP' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Reset OTP verified' })
+  @ApiOperation({
+    summary: 'Verify reset password OTP and receive short-lived cryptographic resetToken',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description:
+      'Reset OTP verified successfully. Returns cryptographic resetToken valid for 15 minutes.',
+    schema: {
+      example: {
+        success: true,
+        message: 'رمز التحقق صحيح',
+        data: {
+          resetToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid or expired OTP, or max attempts exceeded (5 attempts)',
+  })
   async verifyResetOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyResetOtp(dto);
   }
 
   @isPublic()
   @Public()
+  @UseGuards(ResetTokenGuard)
+  @ApiBearerAuth('JWT-auth')
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset password with new hash' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Password reset successfully' })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  @ApiOperation({
+    summary:
+      'Reset password using verified resetToken passed via Authorization: Bearer header and globally revoke all previous sessions',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description:
+      'Password reset successfully. Prior sessions and active access tokens globally invalidated.',
+    schema: {
+      example: {
+        success: true,
+        message:
+          'تم إعادة تعيين كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.',
+      },
+    },
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing, invalid, malformed, or expired resetToken in Bearer header',
+  })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Validation failed for newPassword',
+  })
+  async resetPassword(@Req() req: any, @Body() dto: ResetPasswordDto) {
+    const email = req?.user?.email;
+    return this.authService.resetPassword(email, dto.newPassword);
   }
 }

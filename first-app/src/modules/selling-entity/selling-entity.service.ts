@@ -29,10 +29,18 @@ import { ProductApprovalStatusEnum } from '../../common/enums/product-approval-s
 import { EntityOrderStatusEnum } from '../../common/enums/entity-order-status.enum';
 import { EscrowStatusEnum } from '../../common/enums/escrow-status.enum';
 import {
+  parseAndValidateTokenVersion,
+  syncTokenVersionToCache,
+} from '../../common/utils/token-version.util';
+import {
   DEFAULT_COMPANY_ADMIN_PERMISSIONS,
   DEFAULT_SELLER_PERMISSIONS,
 } from '../../common/enums/default-role-permissions';
 import { runSafeTransaction } from '../../common/utils/transaction.util';
+import {
+  CACHE_SERVICE,
+  ICacheService,
+} from '../../shared/cache/interfaces/cache-service.interface';
 
 @Injectable()
 export class SellingEntityService {
@@ -47,22 +55,53 @@ export class SellingEntityService {
     private readonly permissionRepo: PermissionRepo,
     private readonly brandRepo: BrandRepo,
     @InjectConnection() private readonly connection: Connection,
+    @Optional() @Inject(CACHE_SERVICE) private readonly cacheService?: ICacheService,
     @Optional() @Inject(CACHE_MANAGER) private readonly cacheManager?: Cache,
   ) {}
 
-  private async invalidateTokenVersion(
+  async invalidateEntityCache(entityId: string | Types.ObjectId): Promise<void> {
+    if (!entityId) return;
+    const key = `entity:status:${entityId.toString()}`;
+    try {
+      if (this.cacheService) {
+        await this.cacheService.del(key);
+      }
+      if (this.cacheManager) {
+        await this.cacheManager.del(key);
+      }
+    } catch {
+      // non-blocking
+    }
+  }
+
+  async invalidateTokenVersion(
     userId: string | Types.ObjectId,
   ): Promise<void> {
-    if (!this.cacheManager || !userId) return;
+    if (!userId) return;
+    const userIdStr = userId.toString();
+
     try {
-      const key = `auth:token_version:${userId.toString()}`;
-      const store = (this.cacheManager as any)?.store;
-      if (store?.client?.incr) {
-        await store.client.incr(key);
-      } else {
-        const current =
-          (await this.cacheManager.get<number | string>(key)) || 1;
-        await this.cacheManager.set(key, Number(current) + 1);
+      let authoritativeVersion = 1;
+
+      // 1. Atomically increment tokenVersion in authoritative MongoDB User document first
+      if (this.userRepo && Types.ObjectId.isValid(userIdStr)) {
+        const updatedUser = await this.userRepo.updateOne(
+          { _id: new Types.ObjectId(userIdStr) },
+          { $inc: { tokenVersion: 1 } },
+          { new: true },
+        );
+        if (updatedUser && (updatedUser as any).tokenVersion !== undefined) {
+          authoritativeVersion = parseAndValidateTokenVersion((updatedUser as any).tokenVersion);
+        } else {
+          const u = await this.userRepo.getOne({ _id: new Types.ObjectId(userIdStr) });
+          authoritativeVersion = parseAndValidateTokenVersion((u as any)?.tokenVersion);
+        }
+      }
+
+      // 2. Synchronize single canonical version across cache layers
+      const cacheTarget = this.cacheService || this.cacheManager;
+      if (cacheTarget) {
+        await syncTokenVersionToCache(cacheTarget, userIdStr, authoritativeVersion);
       }
     } catch {
       // non-blocking
@@ -237,8 +276,27 @@ export class SellingEntityService {
         );
       }
 
+      // 1. Invalidate entity status cache
+      await this.invalidateEntityCache(entityId);
+
+      // 2. Invalidate tokenVersion for primary owner and all associated users
+      const associatedUsers: (Types.ObjectId | string)[] = [];
       if (entity.primaryOwnerId) {
-        await this.invalidateTokenVersion(entity.primaryOwnerId);
+        associatedUsers.push(entity.primaryOwnerId);
+      }
+      try {
+        const users = await this.userRepo.getAll({ sellingEntityId: entityId } as any);
+        for (const u of users) {
+          if (u._id && !associatedUsers.some((id) => id.toString() === u._id!.toString())) {
+            associatedUsers.push(u._id);
+          }
+        }
+      } catch {
+        // non-blocking
+      }
+
+      for (const uid of associatedUsers) {
+        await this.invalidateTokenVersion(uid);
       }
 
       const doc = (updatedEntity as any)?.toObject ? (updatedEntity as any).toObject() : updatedEntity;
@@ -496,6 +554,84 @@ export class SellingEntityService {
         },
         recentOrders,
       },
+    };
+  }
+
+  async getEntityStatus(ownerIdStr: string) {
+    if (!Types.ObjectId.isValid(ownerIdStr)) {
+      throw new BadRequestException('Invalid owner ID format');
+    }
+    const ownerId = new Types.ObjectId(ownerIdStr);
+    let entity = await this.sellingEntityRepo.getOne({
+      primaryOwnerId: ownerId,
+    });
+    if (!entity) {
+      const user = await this.userRepo.getOne({ _id: ownerId });
+      if (user?.sellingEntityId) {
+        entity = await this.sellingEntityRepo.getOne({
+          _id: user.sellingEntityId,
+        });
+      }
+    }
+    if (!entity) {
+      throw new NotFoundException('No selling entity found for this merchant');
+    }
+
+    const doc = (entity as any)?.toObject ? (entity as any).toObject() : entity;
+    return {
+      success: true,
+      data: {
+        entityId: doc._id,
+        status: doc.status,
+        legalName: doc.legalName,
+        tradeName: doc.tradeName,
+        type: doc.type,
+        rejectionReason: doc.rejectionReason,
+      },
+    };
+  }
+
+  async uploadOnboardingDocuments(
+    ownerIdStr: string,
+    body: { documentUrl?: string; taxOrCommercialNumber?: string },
+  ) {
+    if (!Types.ObjectId.isValid(ownerIdStr)) {
+      throw new BadRequestException('Invalid owner ID format');
+    }
+    const ownerId = new Types.ObjectId(ownerIdStr);
+    let entity = await this.sellingEntityRepo.getOne({
+      primaryOwnerId: ownerId,
+    });
+    if (!entity) {
+      const user = await this.userRepo.getOne({ _id: ownerId });
+      if (user?.sellingEntityId) {
+        entity = await this.sellingEntityRepo.getOne({
+          _id: user.sellingEntityId,
+        });
+      }
+    }
+    if (!entity) {
+      throw new NotFoundException('No selling entity found for this merchant');
+    }
+
+    const updatePayload: any = {};
+    if (body.documentUrl) {
+      updatePayload.documentUrl = body.documentUrl;
+    }
+    if (body.taxOrCommercialNumber) {
+      updatePayload['businessDetails.taxNumber'] = body.taxOrCommercialNumber;
+      updatePayload['businessDetails.commercialRegister'] = body.taxOrCommercialNumber;
+    }
+
+    const updated = await this.sellingEntityRepo.updateOne(
+      { _id: entity._id },
+      { $set: updatePayload },
+    );
+
+    return {
+      success: true,
+      message: 'تم تحديث وثائق التاجر بنجاح',
+      data: updated,
     };
   }
 }

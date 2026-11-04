@@ -7,6 +7,7 @@ import {
   IsStrongPassword,
   MinLength,
   IsIn,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -64,9 +65,17 @@ export class RegisterSellerAuthDto {
     description: 'Requested role: SELLER or COMPANY_ADMIN',
   })
   @IsNotEmpty({ message: 'نوع الحساب (الدور) مطلوب' })
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.toLowerCase() : value,
-  )
+  @Transform(({ value }) => {
+    if (typeof value === 'string') {
+      const lower = value.toLowerCase().trim();
+      if (lower === 'company_admin') return RolesEnum.COMPANY_ADMIN;
+      if (lower === 'admin' || lower === 'super_admin') {
+        return RolesEnum.SELLER;
+      }
+      return lower;
+    }
+    return value;
+  })
   @IsIn([RolesEnum.SELLER, RolesEnum.COMPANY_ADMIN], {
     message: 'الدور المطلوب يجب أن يكون seller أو company_admin فقط',
   })
@@ -90,28 +99,32 @@ export class RegisterSellerAuthDto {
   description?: string;
 
   @ApiPropertyOptional({
-    example: 'COMPANY',
-    enum: ['COMPANY', 'INDEPENDENT_SELLER'],
-    description: 'Type of business entity (COMPANY or INDEPENDENT_SELLER)',
-  })
-  @IsOptional()
-  @IsString()
-  businessType?: string;
-
-  @ApiProperty({
     example: '123-456-789',
-    description: 'Tax registration number or commercial register number',
+    description:
+      'Tax registration number or commercial register number (Required strictly for company_admin)',
   })
-  @IsString()
-  @IsNotEmpty({ message: 'الرقم الضريبي أو السجل التجاري مطلوب' })
-  taxOrCommercialNumber: string;
+  @ValidateIf(
+    (o: RegisterSellerAuthDto) =>
+      o.role === RolesEnum.COMPANY_ADMIN ||
+      (typeof o.role === 'string' &&
+        (o.role as string).toLowerCase() === 'company_admin'),
+  )
+  @IsNotEmpty({ message: 'الرقم الضريبي أو السجل التجاري مطلوب للشركات' })
+  @IsString({ message: 'الرقم الضريبي أو السجل التجاري يجب أن يكون نصاً' })
+  taxOrCommercialNumber?: string;
 
   @ApiPropertyOptional({
     example: 'https://cdn.example.com/docs/cr_document.pdf',
-    description: 'URL of uploaded commercial registration or ID document',
+    description:
+      'URL of uploaded commercial registration document (Required strictly for company_admin)',
   })
-  @IsOptional()
-  @IsString()
+  @ValidateIf(
+    (o: RegisterSellerAuthDto) =>
+      o.role === RolesEnum.COMPANY_ADMIN ||
+      (typeof o.role === 'string' &&
+        (o.role as string).toLowerCase() === 'company_admin'),
+  )
+  @IsNotEmpty({ message: 'مستند السجل التجاري مطلوب للشركات' })
+  @IsString({ message: 'رابط الوثيقة يجب أن يكون نصاً' })
   documentUrl?: string;
 }
-

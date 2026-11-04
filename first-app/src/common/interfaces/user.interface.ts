@@ -16,6 +16,7 @@ export interface IUser {
   emailVerificationOtpHash?: string | null;
   emailVerificationOtpExpiresAt?: Date | null;
   sellingEntityId?: Types.ObjectId | string | null;
+  tokenVersion?: number;
 }
 
 export interface IAdmin extends IUser {

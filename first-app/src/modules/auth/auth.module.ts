@@ -8,6 +8,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailModule } from '../../shared/mailer/mail.module';
 import { PermissionsModule } from '../permissions/permissions.module';
+import { ResetTokenGuard } from './guards/reset-token.guard';
 
 @Module({
   imports: [
@@ -32,7 +33,7 @@ import { PermissionsModule } from '../permissions/permissions.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
-  exports: [AuthService, JwtModule], // 2. تصديره صراحة
+  providers: [AuthService, ResetTokenGuard],
+  exports: [AuthService, JwtModule, ResetTokenGuard], // 2. تصديره صراحة
 })
 export class AuthModule {}

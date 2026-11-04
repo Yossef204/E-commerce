@@ -15,14 +15,26 @@ export class Session {
   })
   userId: Types.ObjectId;
 
-  @Prop({ type: String, required: true })
-  refreshTokenHash: string;
+  @Prop({ type: String, default: null })
+  refreshTokenHash?: string;
+
+  @Prop({ type: String, required: true, index: true })
+  activeTokenHash: string;
+
+  @Prop({ type: [String], default: [], index: true })
+  consumedTokenHashes: string[];
+
+  @Prop({ type: String, default: null })
+  revocationReason: string | null;
 
   @Prop({ type: String, default: null })
   deviceInfo: string;
 
   @Prop({ type: String, default: null })
   ipAddress: string;
+
+  @Prop({ type: String, default: null })
+  userAgent: string;
 
   @Prop({ type: Boolean, default: false, index: true })
   isRevoked: boolean;
@@ -33,5 +45,7 @@ export class Session {
 
 export const SessionSchema = SchemaFactory.createForClass(Session);
 
-// Additional compound index for fast active session lookup per user
+// High-performance compound indexes for active session lookup and RTR reuse checks
+SessionSchema.index({ activeTokenHash: 1, isRevoked: 1 });
+SessionSchema.index({ consumedTokenHashes: 1 });
 SessionSchema.index({ userId: 1, isRevoked: 1 });
